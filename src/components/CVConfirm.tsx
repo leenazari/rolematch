@@ -13,7 +13,33 @@ const MIN_LOVED = 3;
 const MAX_LOVED = 5;
 const MAX_AVOID = 3;
 
-export default function CVConfirm({ data, onConfirm, onBack }: Props) {
+type FieldProps = {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+};
+
+type ChipsFieldProps = {
+  label: string;
+  subtitle?: string;
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder: string;
+};
+
+type RankPickerProps = {
+  title: string;
+  subtitle: string;
+  emptyHint: string;
+  sourceItems: string[];
+  ranked: string[];
+  max: number;
+  accent: "indigo" | "slate";
+  onChange: (items: string[]) => void;
+};
+
+export default function CVConfirm(props: Props) {
+  const { data, onConfirm, onBack } = props;
   const [edited, setEdited] = useState<CVData>({
     ...data,
     lovedSkills: data.lovedSkills || [],
@@ -26,6 +52,7 @@ export default function CVConfirm({ data, onConfirm, onBack }: Props) {
 
   const lovedComplete = edited.lovedSkills.length >= MIN_LOVED;
   const canConfirm = lovedComplete;
+  const remaining = MIN_LOVED - edited.lovedSkills.length;
 
   return (
     <div className="w-full max-w-2xl mx-auto">
@@ -98,16 +125,16 @@ export default function CVConfirm({ data, onConfirm, onBack }: Props) {
           onClick={() => canConfirm && onConfirm(edited)}
           disabled={!canConfirm}
           className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-          title={!canConfirm ? `Pick at least ${MIN_LOVED} skills you love first` : ""}
         >
-          {canConfirm ? "Looks right, let's talk" : `Pick ${MIN_LOVED - edited.lovedSkills.length} more loved skill${MIN_LOVED - edited.lovedSkills.length === 1 ? "" : "s"}`}
+          {canConfirm ? "Looks right, let's talk" : `Pick ${remaining} more loved skill${remaining === 1 ? "" : "s"}`}
         </button>
       </div>
     </div>
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field(props: FieldProps) {
+  const { label, value, onChange } = props;
   return (
     <div>
       <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
@@ -121,19 +148,8 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   );
 }
 
-function ChipsField({
-  label,
-  subtitle,
-  items,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  subtitle?: string;
-  items: string[];
-  onChange: (items: string[]) => void;
-  placeholder: string;
-}) {
+function ChipsField(props: ChipsFieldProps) {
+  const { label, subtitle, items, onChange, placeholder } = props;
   const [draft, setDraft] = useState("");
 
   function addItem() {
@@ -204,41 +220,20 @@ function ChipsField({
   );
 }
 
-function RankPicker({
-  title,
-  subtitle,
-  emptyHint,
-  sourceItems,
-  ranked,
-  max,
-  accent,
-  onChange,
-}: {
-  title: string;
-  subtitle: string;
-  emptyHint: string;
-  sourceItems: string[];
-  ranked: string[];
-  max: number;
-  accent: "indigo" | "slate";
-  onChange: (items: string[]) => void;
-}) {
-  const accentClasses =
-    accent === "indigo"
-      ? {
-          rankedBg: "bg-indigo-50 border-indigo-200",
-          rankedItem: "bg-white border-indigo-300 text-indigo-900",
-          rankNumber: "bg-indigo-600 text-white",
-          available: "border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400",
-          availableSelected: "bg-indigo-100 border-indigo-300 text-indigo-400 cursor-not-allowed",
-        }
-      : {
-          rankedBg: "bg-slate-100 border-slate-300",
-          rankedItem: "bg-white border-slate-400 text-slate-700",
-          rankNumber: "bg-slate-600 text-white",
-          available: "border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-500",
-          availableSelected: "bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed",
-        };
+function RankPicker(props: RankPickerProps) {
+  const { title, subtitle, emptyHint, sourceItems, ranked, max, accent, onChange } = props;
+
+  const isIndigo = accent === "indigo";
+
+  const rankedBg = isIndigo ? "bg-indigo-50 border-indigo-200" : "bg-slate-100 border-slate-300";
+  const rankedItem = isIndigo ? "bg-white border-indigo-300 text-indigo-900" : "bg-white border-slate-400 text-slate-700";
+  const rankNumber = isIndigo ? "bg-indigo-600 text-white" : "bg-slate-600 text-white";
+  const availableActive = isIndigo
+    ? "border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400"
+    : "border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-500";
+  const availableSelected = isIndigo
+    ? "bg-indigo-100 border-indigo-300 text-indigo-400 cursor-not-allowed"
+    : "bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed";
 
   function toggle(skill: string) {
     if (ranked.includes(skill)) {
@@ -251,22 +246,24 @@ function RankPicker({
   function moveUp(idx: number) {
     if (idx === 0) return;
     const next = [...ranked];
-    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    const tmp = next[idx - 1];
+    next[idx - 1] = next[idx];
+    next[idx] = tmp;
     onChange(next);
   }
 
   function moveDown(idx: number) {
     if (idx === ranked.length - 1) return;
     const next = [...ranked];
-    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    const tmp = next[idx + 1];
+    next[idx + 1] = next[idx];
+    next[idx] = tmp;
     onChange(next);
   }
 
-  function remove(idx: number) {
+  function removeAt(idx: number) {
     onChange(ranked.filter((_, i) => i !== idx));
   }
-
-  const available = sourceItems;
 
   if (sourceItems.length === 0) {
     return (
@@ -283,7 +280,7 @@ function RankPicker({
       <p className="text-sm text-slate-600 mb-4">{subtitle}</p>
 
       {ranked.length > 0 ? (
-        <div className={`${accentClasses.rankedBg} rounded-xl p-4 mb-4 border-2`}>
+        <div className={`${rankedBg} rounded-xl p-4 mb-4 border-2`}>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
             Your picks ({ranked.length}/{max})
           </p>
@@ -291,11 +288,74 @@ function RankPicker({
             {ranked.map((item, idx) => (
               <div
                 key={item}
-                className={`flex items-center gap-3 p-3 rounded-lg border-2 ${accentClasses.rankedItem}`}
+                className={`flex items-center gap-3 p-3 rounded-lg border-2 ${rankedItem}`}
               >
                 <div
-                  className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${accentClasses.rankNumber}`}
+                  className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${rankNumber}`}
                 >
                   {idx + 1}
                 </div>
-                <div className="flex-1 font-medium">{item}</di
+                <div className="flex-1 font-medium">{item}</div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => moveUp(idx)}
+                    disabled={idx === 0}
+                    className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label="Move up"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveDown(idx)}
+                    disabled={idx === ranked.length - 1}
+                    className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label="Move down"
+                  >
+                    ▼
+                  </button>
+                  <button
+                    onClick={() => removeAt(idx)}
+                    className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50"
+                    aria-label="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400 italic mb-4">{emptyHint}</p>
+      )}
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+          Available skills
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {sourceItems.map((skill) => {
+            const isSelected = ranked.includes(skill);
+            const isFull = ranked.length >= max && !isSelected;
+            const cls = isSelected
+              ? availableSelected
+              : isFull
+              ? "border-slate-200 text-slate-300 cursor-not-allowed"
+              : availableActive;
+            return (
+              <button
+                key={skill}
+                onClick={() => toggle(skill)}
+                disabled={isFull}
+                className={`px-3 py-1.5 border rounded-full text-sm font-medium transition-colors ${cls}`}
+              >
+                {skill}
+                {isSelected && <span className="ml-1 text-xs">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
