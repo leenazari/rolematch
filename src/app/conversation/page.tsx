@@ -208,7 +208,7 @@ export default function ConversationPage() {
         ) : (
           <>
             <div className="mb-10 mt-4">
-              <VoiceOrb state={phase === "reviewing" ? "idle" : phase} />
+              <VoiceOrb state={phase === "ai_speaking" ? "speaking" : phase === "reviewing" ? "idle" : phase} />
             </div>
 
             {/* AI's most recent question */}
