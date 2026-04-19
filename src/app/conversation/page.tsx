@@ -12,6 +12,7 @@ export default function ConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [followUpsThisQuestion, setFollowUpsThisQuestion] = useState(0);
+  const [coachingUsed, setCoachingUsed] = useState(false);
   const [waitingForAi, setWaitingForAi] = useState(false);
   const [finished, setFinished] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
@@ -35,10 +36,15 @@ export default function ConversationPage() {
   async function startConversation() {
     if (!cvData) return;
     setHasStarted(true);
-    await fetchNextQuestion([], 1, 0);
+    await fetchNextQuestion([], 1, 0, false);
   }
 
-  async function fetchNextQuestion(history: Message[], questionNum: number, followUps: number) {
+  async function fetchNextQuestion(
+    history: Message[],
+    questionNum: number,
+    followUps: number,
+    coachingUsedNow: boolean
+  ) {
     setWaitingForAi(true);
     try {
       const res = await fetch("/api/next-question", {
@@ -49,6 +55,7 @@ export default function ConversationPage() {
           history,
           currentQuestion: questionNum,
           followUpsThisQuestion: followUps,
+          coachingUsed: coachingUsedNow,
         }),
       });
       const json = await res.json();
@@ -61,9 +68,10 @@ export default function ConversationPage() {
         setWaitingForAi(false);
         const finalText = json.text || "Thanks for that. I've got enough to work with. Generating your role recommendations now, give me about thirty seconds.";
         const aiMsg: Message = { role: "ai", text: finalText, questionNumber: json.questionNumber };
-        setMessages((prev) => [...prev, aiMsg]);
+        const finalHistory = [...history, aiMsg];
+        setMessages(finalHistory);
         speak(finalText, () => {
-          sessionStorage.setItem("rolematch_conversation", JSON.stringify([...history, aiMsg]));
+          sessionStorage.setItem("rolematch_conversation", JSON.stringify(finalHistory));
           router.push("/results");
         });
         return;
@@ -72,6 +80,7 @@ export default function ConversationPage() {
       setMessages((prev) => [...prev, aiMsg]);
       setCurrentQuestion(json.questionNumber!);
       setFollowUpsThisQuestion(json.followUpsThisQuestion!);
+      if (typeof json.coachingUsed === "boolean") setCoachingUsed(json.coachingUsed);
       setWaitingForAi(false);
       speak(json.text!);
     } catch (e) {
@@ -91,7 +100,7 @@ export default function ConversationPage() {
     const userMsg: Message = { role: "user", text: final };
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
-    await fetchNextQuestion(newHistory, currentQuestion, followUpsThisQuestion);
+    await fetchNextQuestion(newHistory, currentQuestion, followUpsThisQuestion, coachingUsed);
   }
 
   if (!cvData) {
