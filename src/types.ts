@@ -50,7 +50,8 @@ export type SalaryTiers = {
 
 export type RoleMatch = {
   title: string;
-  category: "strong" | "stretch" | "pivot";
+  category: "recommended" | "consider";
+  matchScore: number;
   consultantParagraph: string;
   whyUnexpected?: string;
   yourStrengths: string[];
