@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
+import VoiceOrb from "@/components/VoiceOrb";
 import type { CVData, Message } from "@/types";
+
+type Phase = "idle" | "ai_speaking" | "listening" | "reviewing" | "thinking";
 
 export default function ConversationPage() {
   const router = useRouter();
@@ -13,9 +16,10 @@ export default function ConversationPage() {
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [followUpsThisQuestion, setFollowUpsThisQuestion] = useState(0);
   const [coachingUsed, setCoachingUsed] = useState(false);
-  const [waitingForAi, setWaitingForAi] = useState(false);
   const [finished, setFinished] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [draftAnswer, setDraftAnswer] = useState("");
 
   const { supported: voiceSupported, listening, interim, start, stop, hardReset } = useSpeechRecognition();
   const { speak, speaking, stopSpeaking } = useSpeechSynthesis();
@@ -33,6 +37,15 @@ export default function ConversationPage() {
     }
   }, [router]);
 
+  // Keep phase in sync with what's actually happening
+  useEffect(() => {
+    if (speaking) {
+      setPhase("ai_speaking");
+    } else if (listening) {
+      setPhase("listening");
+    }
+  }, [speaking, listening]);
+
   async function startConversation() {
     if (!cvData) return;
     setHasStarted(true);
@@ -45,7 +58,7 @@ export default function ConversationPage() {
     followUps: number,
     coachingUsedNow: boolean
   ) {
-    setWaitingForAi(true);
+    setPhase("thinking");
     try {
       const res = await fetch("/api/next-question", {
         method: "POST",
@@ -60,16 +73,16 @@ export default function ConversationPage() {
       });
       const json = await res.json();
       if (!json.ok) {
-        setWaitingForAi(false);
+        setPhase("idle");
         return;
       }
       if (json.finished) {
         setFinished(true);
-        setWaitingForAi(false);
         const finalText = json.text || "Thanks for that. I've got enough to work with. Generating your role recommendations now, give me about thirty seconds.";
         const aiMsg: Message = { role: "ai", text: finalText, questionNumber: json.questionNumber };
         const finalHistory = [...history, aiMsg];
         setMessages(finalHistory);
+        setPhase("ai_speaking");
         speak(finalText, () => {
           sessionStorage.setItem("rolematch_conversation", JSON.stringify(finalHistory));
           router.push("/results");
@@ -81,25 +94,55 @@ export default function ConversationPage() {
       setCurrentQuestion(json.questionNumber!);
       setFollowUpsThisQuestion(json.followUpsThisQuestion!);
       if (typeof json.coachingUsed === "boolean") setCoachingUsed(json.coachingUsed);
-      setWaitingForAi(false);
-      speak(json.text!);
+      setPhase("ai_speaking");
+      speak(json.text!, () => {
+        setPhase("idle");
+      });
     } catch (e) {
-      setWaitingForAi(false);
+      setPhase("idle");
     }
   }
 
   function handleStartListening() {
     if (speaking) stopSpeaking();
     hardReset();
-    setTimeout(() => start(), 100);
+    setDraftAnswer("");
+    setTimeout(() => {
+      start();
+      setPhase("listening");
+    }, 100);
   }
 
-  async function handleStopListening() {
+  function handleStopListening() {
     const final = stop();
-    if (!final || final.trim().length < 2) return;
-    const userMsg: Message = { role: "user", text: final };
+    const captured = (final || "").trim();
+    setDraftAnswer((prev) => {
+      const combined = prev ? prev + " " + captured : captured;
+      return combined.trim();
+    });
+    setPhase("reviewing");
+  }
+
+  function handleResumeListening() {
+    hardReset();
+    setTimeout(() => {
+      start();
+      setPhase("listening");
+    }, 100);
+  }
+
+  function handleClearAndRetry() {
+    hardReset();
+    setDraftAnswer("");
+    setPhase("idle");
+  }
+
+  async function handleSendAnswer() {
+    if (!draftAnswer.trim()) return;
+    const userMsg: Message = { role: "user", text: draftAnswer.trim() };
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
+    setDraftAnswer("");
     await fetchNextQuestion(newHistory, currentQuestion, followUpsThisQuestion, coachingUsed);
   }
 
@@ -127,10 +170,12 @@ export default function ConversationPage() {
     );
   }
 
+  const latestAi = [...messages].reverse().find((m) => m.role === "ai");
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
             RoleMatch
           </div>
@@ -141,6 +186,9 @@ export default function ConversationPage() {
 
         {!hasStarted ? (
           <div className="text-center max-w-xl mx-auto">
+            <div className="mb-12">
+              <VoiceOrb state="idle" />
+            </div>
             <h1 className="text-3xl font-bold text-slate-900 mb-4">
               Hi {cvData.name.split(" ")[0]}, ready to talk?
             </h1>
@@ -159,59 +207,112 @@ export default function ConversationPage() {
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-3xl p-8 mb-6 min-h-[300px] border border-slate-200 shadow-sm">
-              {messages.length === 0 && waitingForAi && (
-                <div className="text-slate-400 text-center py-8">Thinking...</div>
-              )}
-              {messages.map((m, i) => {
-                const isLatest = i === messages.length - 1;
-                if (m.role === "ai" && isLatest) {
-                  return (
-                    <div key={i} className="text-center">
-                      <p className="text-2xl text-slate-900 leading-relaxed font-medium">
-                        {m.text}
-                      </p>
-                      {speaking && (
-                        <div className="mt-4 text-xs text-indigo-500 uppercase tracking-wider">
-                          Speaking...
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              })}
-              {listening && interim && (
-                <div className="mt-6 pt-6 border-t border-slate-100 text-slate-500 italic text-center">
-                  {interim}
-                </div>
-              )}
-              {waitingForAi && messages.length > 0 && (
-                <div className="mt-4 text-center text-slate-400 text-sm">Thinking about your answer...</div>
-              )}
+            <div className="mb-10 mt-4">
+              <VoiceOrb state={phase === "reviewing" ? "idle" : phase} />
             </div>
 
-            <div className="flex justify-center">
-              {!listening ? (
+            {/* AI's most recent question */}
+            {latestAi && (
+              <div className="bg-white rounded-3xl p-8 mb-6 border border-slate-200 shadow-sm">
+                <p className="text-xl md:text-2xl text-slate-900 leading-relaxed text-center font-medium">
+                  {latestAi.text}
+                </p>
+              </div>
+            )}
+
+            {/* Live transcript while listening */}
+            {phase === "listening" && (
+              <div className="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-6 mb-6">
+                <div className="text-xs font-semibold uppercase tracking-wider text-indigo-700 mb-2">
+                  Listening
+                </div>
+                <p className="text-lg text-slate-900 leading-relaxed min-h-[2rem]">
+                  {draftAnswer && <span>{draftAnswer} </span>}
+                  <span className="text-slate-500 italic">{interim}</span>
+                  {!draftAnswer && !interim && (
+                    <span className="text-slate-400 italic">Start speaking...</span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {/* Captured draft, shown for review before sending */}
+            {phase === "reviewing" && draftAnswer && (
+              <div className="bg-white border-2 border-slate-200 rounded-2xl p-6 mb-6">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                  Your answer
+                </div>
+                <p className="text-lg text-slate-900 leading-relaxed">
+                  {draftAnswer}
+                </p>
+              </div>
+            )}
+
+            {/* Buttons - context dependent */}
+            <div className="flex flex-wrap gap-3 justify-center">
+              {phase === "ai_speaking" && (
+                <button
+                  disabled
+                  className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
+                >
+                  Wait for me to finish...
+                </button>
+              )}
+
+              {phase === "thinking" && (
+                <button
+                  disabled
+                  className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
+                >
+                  Thinking about your answer...
+                </button>
+              )}
+
+              {phase === "idle" && !finished && (
                 <button
                   onClick={handleStartListening}
-                  disabled={waitingForAi || speaking || finished}
-                  className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-200"
+                  className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200"
                 >
-                  {speaking ? "Listening to me first..." : waitingForAi ? "Thinking..." : "Tap to answer"}
+                  Tap to answer
                 </button>
-              ) : (
+              )}
+
+              {phase === "listening" && (
                 <button
                   onClick={handleStopListening}
                   className="px-8 py-4 bg-red-500 text-white rounded-2xl hover:bg-red-600 font-medium shadow-lg shadow-red-200"
                 >
-                  Done answering
+                  Stop
                 </button>
+              )}
+
+              {phase === "reviewing" && (
+                <>
+                  <button
+                    onClick={handleResumeListening}
+                    className="px-6 py-4 bg-white border-2 border-indigo-300 text-indigo-700 rounded-2xl hover:bg-indigo-50 font-medium"
+                  >
+                    Add more
+                  </button>
+                  <button
+                    onClick={handleClearAndRetry}
+                    className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
+                  >
+                    Try again
+                  </button>
+                  <button
+                    onClick={handleSendAnswer}
+                    disabled={!draftAnswer.trim()}
+                    className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Send my answer
+                  </button>
+                </>
               )}
             </div>
 
             {messages.length > 0 && (
-              <div className="mt-8 text-center">
+              <div className="mt-12 text-center">
                 <details className="text-xs text-slate-400">
                   <summary className="cursor-pointer">Conversation history</summary>
                   <div className="mt-4 text-left space-y-3 max-w-xl mx-auto">
