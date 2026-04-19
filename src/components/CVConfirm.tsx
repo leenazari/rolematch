@@ -8,7 +8,7 @@ type Props = {
   onConfirm: (data: CVData) => void;
   onBack: () => void;
 };
-
+const INTRO_VIDEO_URL = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/rolematch.mp4";
 const MIN_LOVED = 3;
 const MAX_LOVED = 5;
 const MAX_AVOID = 3;
