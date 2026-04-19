@@ -38,10 +38,10 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         text,
         model_id: MODEL_ID,
-        voice_settings: {
+         voice_settings: {
           stability: 0.5,
           similarity_boost: 0.75,
-          style: 0.0,
+          style: 0.25,
           use_speaker_boost: true,
         },
         output_format: "mp3_44100_128",
