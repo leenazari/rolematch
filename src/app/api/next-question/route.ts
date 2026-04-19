@@ -10,6 +10,7 @@ type Body = {
   history: Message[];
   currentQuestion: number;
   followUpsThisQuestion: number;
+  coachingUsed: boolean;
 };
 
 const QUESTION_FRAMEWORK = `You are RoleMatch, a thoughtful career coach having a voice conversation with a user. Your job is to understand what kind of work would genuinely fit them, not just what their CV says they're qualified for.
@@ -76,26 +77,36 @@ CAREER STAGE ADAPTATION
 - Mid career (3-10 years): use the standard versions above.
 - Established career (10+ years): on Q5, reframe as "Is there a kind of work you've watched other people do over your career and wished you'd done at some point?"
 
+COACHING PREFIX (use only when explicitly told to)
+If the instruction tells you to include the coaching prefix, prepend this to your response, then the follow-up question:
+
+"One thing that'll help. The more you give me to work with, the more accurate the suggestions. So feel free to think out loud. Now, [follow-up question]"
+
+The whole combined message must still be under 60 words when the prefix is included. The prefix is only ever added once in the whole conversation.
+
 UNIVERSAL RULES
 - Use specifics from earlier answers wherever possible. "You mentioned earlier that you loved the training side at Tesco..." is much more powerful than asking something generic.
 - Bridge naturally between core questions. "OK that's helpful. Let me change tack a bit..." rather than firing the next one cold.
 - Never ask the same thing twice in different words.
 - Never push if the user shows discomfort or signals they want to move on.
 - Tone: warm, curious, thoughtful coach. Not a chirpy assistant. Treats the user like an intelligent adult.
-- Avoid these phrases entirely: "I hear you", "love that", "amazing", "great answer", "100%", "for sure", "absolutely", "totally", "for sure".
-- No emoji. No exclamation marks. No em dashes (—). No en dashes (–).
+- Avoid these phrases entirely: "I hear you", "love that", "amazing", "great answer", "100%", "for sure", "absolutely", "totally".
+- No emoji. No exclamation marks. No em dashes. No en dashes.
 - British English (organising not organizing).
 - Avoid the word "read" anywhere in your response. The browser TTS pronounces it as "red" which sounds wrong. Use "look at" or "have a look at" instead.
-- Keep your response under 35 words. Long questions are confusing in voice.
+- Keep your response under 35 words when no coaching prefix. Under 60 words when including the coaching prefix.
 
 OUTPUT FORMAT
 Respond with ONLY valid JSON. No preamble. No code fences.
 
 {
-  "text": "the question or follow-up to ask, max 35 words",
+  "text": "the question or follow-up to ask",
   "moveOn": true | false,
-  "finished": false
+  "finished": false | true,
+  "thinAnswer": true | false
 }
+
+Set thinAnswer to true ONLY if the user's most recent answer was thin (generic, very short, deflective, or didn't really answer the question). This is used by the system to track whether to use the one-time coaching prefix.
 
 If moveOn is true, you're advancing to the next question (or finishing if currentQuestion is 6 and you're done).
 If moveOn is false, you're staying on the current question with a follow-up.
@@ -104,7 +115,7 @@ If you're saying goodbye after Q6, set finished to true and the text should be a
 export async function POST(req: NextRequest) {
   try {
     const body: Body = await req.json();
-    const { cvData, history, currentQuestion, followUpsThisQuestion } = body;
+    const { cvData, history, currentQuestion, followUpsThisQuestion, coachingUsed } = body;
 
     if (!cvData || typeof currentQuestion !== "number") {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
@@ -141,16 +152,20 @@ Notable employers: ${cvData.notableEmployers.join(", ")}`;
         ? "You have asked 1 follow-up for this question. You can ask 1 more, then must move on."
         : "You have asked 2 follow-ups for this question. You MUST move on now.";
 
+    const coachingStatus = coachingUsed
+      ? "The one-time coaching prefix has ALREADY been used in this conversation. Do not include it again under any circumstance."
+      : "The one-time coaching prefix has NOT been used yet. If the user's most recent answer is thin AND you are about to ask a follow-up (not move on), include the coaching prefix. Otherwise do not include it.";
+
     let stateInstruction = "";
 
     if (isFirstMessage) {
-      stateInstruction = `This is the very first message of the conversation. Open with Q1. Personalise using their CV (employer name from notableEmployers if available, current role). Set moveOn to false (you're not moving past Q1, you're starting it). Set finished to false.`;
+      stateInstruction = `This is the very first message of the conversation. Open with Q1. Personalise using their CV (employer name from notableEmployers if available, current role). Set moveOn to false (you're not moving past Q1, you're starting it). Set finished to false. Set thinAnswer to false (no answer yet to judge).`;
     } else if (currentQuestion === 6 && followUpsThisQuestion >= 2) {
-      stateInstruction = `You are at Q6 and have already used 2 follow-ups. The user has just answered. Generate the final sign-off. Set moveOn to true and finished to true. Text should be a warm, brief sign-off like "Thanks for that. I've got enough to work with. Generating your role recommendations now, give me about thirty seconds." or similar variant.`;
+      stateInstruction = `You are at Q6 and have already used 2 follow-ups. The user has just answered. Generate the final sign-off. Set moveOn to true, finished to true. Text should be a warm, brief sign-off like "Thanks for that. I've got enough to work with. Generating your role recommendations now, give me about thirty seconds." Set thinAnswer based on the user's last answer.`;
     } else if (currentQuestion === 6) {
-      stateInstruction = `You are on Q6. Decide based on the user's most recent answer: was it rich enough to move on (which means finishing the conversation) or do you want a follow-up? If moving on, set moveOn to true AND finished to true, and give a warm sign-off (under 35 words). If following up, set moveOn to false, finished to false, and ask a personalised follow-up.`;
+      stateInstruction = `You are on Q6. Decide based on the user's most recent answer: was it rich enough to move on (finishing the conversation) or do you want a follow-up? If moving on, set moveOn to true AND finished to true, give a warm sign-off. If following up, set moveOn to false, finished to false, ask a personalised follow-up. Set thinAnswer based on the user's last answer.`;
     } else {
-      stateInstruction = `You are on Q${currentQuestion}. Look at the user's most recent answer. Decide: move on to Q${currentQuestion + 1} (set moveOn to true, finished to false, generate the opening for Q${currentQuestion + 1} with a natural bridge), or stay on Q${currentQuestion} with a follow-up (set moveOn to false, finished to false, ask a personalised follow-up that references what they just said). ${followUpStatus}`;
+      stateInstruction = `You are on Q${currentQuestion}. Look at the user's most recent answer. Decide: move on to Q${currentQuestion + 1} (set moveOn to true, finished to false, generate the opening for Q${currentQuestion + 1} with a natural bridge), or stay on Q${currentQuestion} with a follow-up (set moveOn to false, finished to false, ask a personalised follow-up that references what they just said). ${followUpStatus} Set thinAnswer based on the user's last answer.`;
     }
 
     const userPrompt = `CV SUMMARY
@@ -161,6 +176,9 @@ ${stageGuidance}
 
 CURRENT QUESTION NUMBER: ${currentQuestion}
 FOLLOW-UPS USED ON THIS QUESTION: ${followUpsThisQuestion}
+
+COACHING PREFIX STATUS
+${coachingStatus}
 
 CONVERSATION SO FAR
 ${conversationLog}
@@ -174,7 +192,7 @@ Now respond with JSON only.`;
 
     const msg = await anthropic.messages.create({
       model: HAIKU,
-      max_tokens: 400,
+      max_tokens: 500,
       system: QUESTION_FRAMEWORK,
       messages: [{ role: "user", content: userPrompt }],
     });
@@ -192,9 +210,11 @@ Now respond with JSON only.`;
     const text: string = (parsed.text || "").trim();
     const moveOn: boolean = !!parsed.moveOn;
     const finished: boolean = !!parsed.finished;
+    const thinAnswer: boolean = !!parsed.thinAnswer;
 
     let nextQuestionNumber = currentQuestion;
     let nextFollowUps = followUpsThisQuestion;
+    let nextCoachingUsed = coachingUsed;
 
     if (isFirstMessage) {
       nextQuestionNumber = 1;
@@ -206,12 +226,24 @@ Now respond with JSON only.`;
       nextFollowUps = followUpsThisQuestion + 1;
     }
 
+    const includedCoachingThisTurn =
+      !coachingUsed &&
+      thinAnswer &&
+      !moveOn &&
+      !isFirstMessage &&
+      text.toLowerCase().includes("the more you give me");
+
+    if (includedCoachingThisTurn) {
+      nextCoachingUsed = true;
+    }
+
     return NextResponse.json({
       ok: true,
       text,
       questionNumber: nextQuestionNumber,
       followUpsThisQuestion: nextFollowUps,
       finished,
+      coachingUsed: nextCoachingUsed,
     });
   } catch (e: any) {
     console.error("next-question error:", e);
