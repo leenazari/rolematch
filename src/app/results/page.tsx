@@ -16,6 +16,9 @@ const CATEGORY_BLURBS = {
   strong: "Direct fits based on your experience and what you told us you want.",
 };
 
+type SalaryTierKey = "entry" | "established" | "senior";
+const SALARY_TIERS: SalaryTierKey[] = ["entry", "established", "senior"];
+
 export default function ResultsPage() {
   const router = useRouter();
   const [cvData, setCvData] = useState<CVData | null>(null);
@@ -134,7 +137,6 @@ export default function ResultsPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-10">
           <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
             RoleMatch
@@ -147,7 +149,6 @@ export default function ResultsPage() {
           )}
         </div>
 
-        {/* Download button */}
         <div className="flex justify-center mb-10">
           <button
             onClick={handleDownloadPdf}
@@ -158,7 +159,6 @@ export default function ResultsPage() {
           </button>
         </div>
 
-        {/* Summary */}
         <div className="bg-indigo-50 border-l-4 border-indigo-600 rounded-r-2xl p-6 mb-10">
           <div className="text-xs font-semibold uppercase tracking-wider text-indigo-700 mb-2">
             What we heard from you
@@ -168,30 +168,14 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        {/* Pivot */}
-        <RoleSection
-          category="pivot"
-          roles={groupedRoles.pivot}
-        />
+        <RoleSection category="pivot" roles={groupedRoles.pivot} />
+        <RoleSection category="stretch" roles={groupedRoles.stretch} />
+        <RoleSection category="strong" roles={groupedRoles.strong} />
 
-        {/* Stretch */}
-        <RoleSection
-          category="stretch"
-          roles={groupedRoles.stretch}
-        />
-
-        {/* Strong */}
-        <RoleSection
-          category="strong"
-          roles={groupedRoles.strong}
-        />
-
-        {/* Salary caveat */}
         <p className="text-xs text-slate-400 italic text-center mt-8 max-w-2xl mx-auto">
           Salary ranges are estimates based on UK averages and can vary by region, employer, and your specific background. Use them as a guide, not a guarantee.
         </p>
 
-        {/* Interviewa CTA */}
         <div className="mt-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-3xl p-10 text-center shadow-xl shadow-indigo-200">
           <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
             Ready to practise interviewing for these roles?
@@ -209,7 +193,6 @@ export default function ResultsPage() {
           </a>
         </div>
 
-        {/* Restart */}
         <div className="text-center mt-8">
           <button
             onClick={() => {
@@ -253,7 +236,11 @@ function RoleSection(props: RoleSectionProps) {
   );
 }
 
-function RoleCard(props: { role: RoleMatch }) {
+type RoleCardProps = {
+  role: RoleMatch;
+};
+
+function RoleCard(props: RoleCardProps) {
   const { role } = props;
   const isPivot = role.category === "pivot";
 
@@ -312,7 +299,7 @@ function RoleCard(props: { role: RoleMatch }) {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        {(["entry", "established", "senior"] as const).map((tier) => {
+        {SALARY_TIERS.map((tier) => {
           const isActive = role.salary.startingTier === tier;
           return (
             <div
