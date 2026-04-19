@@ -7,7 +7,7 @@ import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import VoiceOrb from "@/components/VoiceOrb";
 import type { CVData, Message } from "@/types";
 
-type Phase = "idle" | "ai_speaking" | "listening" | "reviewing" | "thinking";
+type Phase = "idle" | "ai_speaking" | "listening" | "finalising" | "reviewing" | "thinking";
 
 export default function ConversationPage() {
   const router = useRouter();
@@ -21,10 +21,10 @@ export default function ConversationPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [draftAnswer, setDraftAnswer] = useState("");
 
-  const { supported: voiceSupported, listening, interim, start, stop, hardReset } = useSpeechRecognition();
+  const { supported: voiceSupported, listening, transcript, interim, start, stop, hardReset } = useSpeechRecognition();
   const { speak, speaking, stopSpeaking } = useSpeechSynthesis();
 
-  useEffect(() => {
+  useEffect(function () {
     const stored = sessionStorage.getItem("rolematch_cv");
     if (!stored) {
       router.push("/");
@@ -32,19 +32,16 @@ export default function ConversationPage() {
     }
     try {
       setCvData(JSON.parse(stored));
-    } catch {
+    } catch (e) {
       router.push("/");
     }
   }, [router]);
 
-  // Keep phase in sync with what's actually happening
-  useEffect(() => {
+  useEffect(function () {
     if (speaking) {
       setPhase("ai_speaking");
-    } else if (listening) {
-      setPhase("listening");
     }
-  }, [speaking, listening]);
+  }, [speaking]);
 
   async function startConversation() {
     if (!cvData) return;
@@ -83,19 +80,19 @@ export default function ConversationPage() {
         const finalHistory = [...history, aiMsg];
         setMessages(finalHistory);
         setPhase("ai_speaking");
-        speak(finalText, () => {
+        speak(finalText, function () {
           sessionStorage.setItem("rolematch_conversation", JSON.stringify(finalHistory));
           router.push("/results");
         });
         return;
       }
       const aiMsg: Message = { role: "ai", text: json.text!, questionNumber: json.questionNumber };
-      setMessages((prev) => [...prev, aiMsg]);
+      setMessages(function (prev) { return [...prev, aiMsg]; });
       setCurrentQuestion(json.questionNumber!);
       setFollowUpsThisQuestion(json.followUpsThisQuestion!);
       if (typeof json.coachingUsed === "boolean") setCoachingUsed(json.coachingUsed);
       setPhase("ai_speaking");
-      speak(json.text!, () => {
+      speak(json.text!, function () {
         setPhase("idle");
       });
     } catch (e) {
@@ -107,16 +104,17 @@ export default function ConversationPage() {
     if (speaking) stopSpeaking();
     hardReset();
     setDraftAnswer("");
-    setTimeout(() => {
+    setTimeout(function () {
       start();
       setPhase("listening");
     }, 100);
   }
 
-  function handleStopListening() {
-    const final = stop();
+  async function handleStopListening() {
+    setPhase("finalising");
+    const final = await stop();
     const captured = (final || "").trim();
-    setDraftAnswer((prev) => {
+    setDraftAnswer(function (prev) {
       const combined = prev ? prev + " " + captured : captured;
       return combined.trim();
     });
@@ -125,7 +123,7 @@ export default function ConversationPage() {
 
   function handleResumeListening() {
     hardReset();
-    setTimeout(() => {
+    setTimeout(function () {
       start();
       setPhase("listening");
     }, 100);
@@ -162,7 +160,7 @@ export default function ConversationPage() {
           <p className="text-slate-600 mb-6">
             This browser doesn't support voice input. Please open RoleMatch in Chrome or Edge on a desktop or Android device.
           </p>
-          <button onClick={() => router.push("/")} className="text-indigo-600 underline">
+          <button onClick={function () { router.push("/"); }} className="text-indigo-600 underline">
             Back to start
           </button>
         </div>
@@ -170,7 +168,15 @@ export default function ConversationPage() {
     );
   }
 
-  const latestAi = [...messages].reverse().find((m) => m.role === "ai");
+  const latestAi = [...messages].reverse().find(function (m) { return m.role === "ai"; });
+  const reversedMessages = [...messages].reverse();
+
+  const orbState =
+    phase === "ai_speaking" ? "speaking" :
+    phase === "listening" ? "listening" :
+    phase === "thinking" ? "thinking" :
+    phase === "finalising" ? "thinking" :
+    "idle";
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
@@ -179,9 +185,9 @@ export default function ConversationPage() {
           <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
             RoleMatch
           </div>
-          {!finished && hasStarted && (
+          {!finished && hasStarted ? (
             <p className="text-slate-500 text-sm">Question {currentQuestion} of 6</p>
-          )}
+          ) : null}
         </div>
 
         {!hasStarted ? (
@@ -208,85 +214,109 @@ export default function ConversationPage() {
         ) : (
           <>
             <div className="mb-10 mt-4">
-              <VoiceOrb state={phase === "ai_speaking" ? "speaking" : phase === "reviewing" ? "idle" : phase} />
+              <VoiceOrb state={orbState} />
             </div>
 
-            {/* AI's most recent question */}
-            {latestAi && (
+            {latestAi ? (
               <div className="bg-white rounded-3xl p-8 mb-6 border border-slate-200 shadow-sm">
+                <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-3 text-center">
+                  RoleMatch
+                </div>
                 <p className="text-xl md:text-2xl text-slate-900 leading-relaxed text-center font-medium">
                   {latestAi.text}
                 </p>
               </div>
-            )}
+            ) : null}
 
-            {/* Live transcript while listening */}
-            {phase === "listening" && (
-              <div className="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-6 mb-6">
-                <div className="text-xs font-semibold uppercase tracking-wider text-indigo-700 mb-2">
-                  Listening
+            {(phase === "listening" || phase === "finalising" || phase === "reviewing") ? (
+              <div className={
+                phase === "reviewing"
+                  ? "bg-white border-2 border-slate-200 rounded-2xl p-6 mb-6"
+                  : "bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-6 mb-6"
+              }>
+                <div className={
+                  phase === "reviewing"
+                    ? "text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2"
+                    : "text-xs font-semibold uppercase tracking-wider text-indigo-700 mb-2 flex items-center gap-2"
+                }>
+                  {phase === "listening" ? (
+                    <>
+                      <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                      Listening
+                    </>
+                  ) : phase === "finalising" ? (
+                    <>
+                      <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+                      Finalising your answer...
+                    </>
+                  ) : (
+                    <>Your answer</>
+                  )}
                 </div>
                 <p className="text-lg text-slate-900 leading-relaxed min-h-[2rem]">
-                  {draftAnswer && <span>{draftAnswer} </span>}
-                  <span className="text-slate-500 italic">{interim}</span>
-                  {!draftAnswer && !interim && (
-                    <span className="text-slate-400 italic">Start speaking...</span>
+                  {phase === "reviewing" ? (
+                    draftAnswer ? draftAnswer : <span className="text-slate-400 italic">Nothing captured. Try again.</span>
+                  ) : (
+                    <>
+                      {draftAnswer ? <span>{draftAnswer} </span> : null}
+                      {transcript ? <span>{transcript} </span> : null}
+                      <span className="text-slate-500 italic">{interim}</span>
+                      {!draftAnswer && !transcript && !interim ? (
+                        <span className="text-slate-400 italic">Start speaking...</span>
+                      ) : null}
+                    </>
                   )}
                 </p>
               </div>
-            )}
+            ) : null}
 
-            {/* Captured draft, shown for review before sending */}
-            {phase === "reviewing" && draftAnswer && (
-              <div className="bg-white border-2 border-slate-200 rounded-2xl p-6 mb-6">
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                  Your answer
-                </div>
-                <p className="text-lg text-slate-900 leading-relaxed">
-                  {draftAnswer}
-                </p>
-              </div>
-            )}
-
-            {/* Buttons - context dependent */}
             <div className="flex flex-wrap gap-3 justify-center">
-              {phase === "ai_speaking" && (
+              {phase === "ai_speaking" ? (
                 <button
                   disabled
                   className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
                 >
                   Wait for me to finish...
                 </button>
-              )}
+              ) : null}
 
-              {phase === "thinking" && (
+              {phase === "thinking" ? (
                 <button
                   disabled
                   className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
                 >
                   Thinking about your answer...
                 </button>
-              )}
+              ) : null}
 
-              {phase === "idle" && !finished && (
+              {phase === "finalising" ? (
+                <button
+                  disabled
+                  className="px-8 py-4 bg-amber-100 text-amber-700 rounded-2xl font-medium cursor-not-allowed"
+                >
+                  Capturing your last words...
+                </button>
+              ) : null}
+
+              {phase === "idle" && !finished ? (
                 <button
                   onClick={handleStartListening}
                   className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200"
                 >
                   Tap to answer
                 </button>
-              )}
+              ) : null}
 
-              {phase === "listening" && (
+              {phase === "listening" ? (
                 <button
                   onClick={handleStopListening}
                   className="px-8 py-4 bg-red-500 text-white rounded-2xl hover:bg-red-600 font-medium shadow-lg shadow-red-200"
                 >
                   Stop
                 </button>
-              )}
+              ) : null}
 
-              {phase === "reviewing" && (
+              {phase === "reviewing" ? (
                 <>
                   <button
                     onClick={handleResumeListening}
@@ -308,23 +338,25 @@ export default function ConversationPage() {
                     Send my answer
                   </button>
                 </>
-              )}
+              ) : null}
             </div>
 
-            {messages.length > 0 && (
+            {messages.length > 1 ? (
               <div className="mt-12 text-center">
                 <details className="text-xs text-slate-400">
-                  <summary className="cursor-pointer">Conversation history</summary>
+                  <summary className="cursor-pointer hover:text-slate-600">Conversation history</summary>
                   <div className="mt-4 text-left space-y-3 max-w-xl mx-auto">
-                    {messages.map((m, i) => (
-                      <div key={i} className={m.role === "ai" ? "text-slate-700" : "text-indigo-700"}>
-                        <strong>{m.role === "ai" ? "RoleMatch:" : "You:"}</strong> {m.text}
-                      </div>
-                    ))}
+                    {reversedMessages.map(function (m, i) {
+                      return (
+                        <div key={i} className={m.role === "ai" ? "text-slate-700 text-sm" : "text-indigo-700 text-sm"}>
+                          <strong>{m.role === "ai" ? "RoleMatch:" : "You:"}</strong> {m.text}
+                        </div>
+                      );
+                    })}
                   </div>
                 </details>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>
