@@ -12,12 +12,20 @@ Return this exact shape:
   "currentRole": "string (most recent or current job title)",
   "sector": "string (industry, e.g. Retail, Healthcare, Tech, Education)",
   "yearsExperience": number (total years of professional work),
-  "keySkills": ["string", "string", ...] (5-10 most relevant),
+  "keySkills": ["string", "string", ...] (8-12 items),
   "education": "string (highest qualification, brief)",
   "notableEmployers": ["string", "string", ...] (up to 5 employer names)
 }
 
-If a field is unclear, make your best inference rather than leaving it empty. Use empty array if no skills or employers found.`;
+Rules for keySkills:
+- Infer skills from what they have actually done, not just words they wrote about themselves.
+- Mix hard skills (tools, software, technical capabilities, languages, certifications) with practical capabilities demonstrated by their roles (e.g. team leadership, stakeholder management, P&L responsibility, customer service at scale, project delivery, training others, conflict resolution).
+- Avoid generic adjectives like "hardworking", "passionate", "motivated", "team player". Those tell us nothing.
+- Avoid duplicates and near-duplicates.
+- Use British English spelling (organising not organizing).
+- If a skill is implied by a job (e.g. a shop floor manager has people management, rota planning, cash handling, customer complaints, stock control), include the implied skill.
+
+If a field is unclear, make your best inference rather than leaving it empty. Use empty array if truly nothing found.`;
 
 async function extractFromText(rawText: string) {
   const trimmed = rawText.slice(0, 12000);
