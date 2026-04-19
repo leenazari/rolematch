@@ -46,7 +46,12 @@ async function extractFromText(rawText: string) {
   cleaned = cleaned.replace(/```json|```/g, "").trim();
 
   const data = JSON.parse(cleaned);
-  return { ...data, rawText: trimmed };
+  return {
+    ...data,
+    rawText: trimmed,
+    lovedSkills: [],
+    avoidSkills: [],
+  };
 }
 
 export async function POST(req: NextRequest) {
