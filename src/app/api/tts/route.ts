@@ -39,10 +39,11 @@ export async function POST(req: NextRequest) {
         text,
         model_id: MODEL_ID,
          voice_settings: {
-          stability: 0.5,
+          stability: 0.25,
           similarity_boost: 0.75,
           style: 0.25,
           use_speaker_boost: true,
+          speed: 0.9,
         },
         output_format: "mp3_44100_128",
       }),
