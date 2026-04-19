@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import CVUpload from "@/components/CVUpload";
 import CVConfirm from "@/components/CVConfirm";
 import type { CVData } from "@/types";
@@ -8,6 +9,7 @@ import type { CVData } from "@/types";
 type Stage = "welcome" | "confirm";
 
 export default function Home() {
+  const router = useRouter();
   const [stage, setStage] = useState<Stage>("welcome");
   const [cvData, setCvData] = useState<CVData | null>(null);
 
@@ -46,8 +48,8 @@ export default function Home() {
           <CVConfirm
             data={cvData}
             onConfirm={(finalData) => {
-              setCvData(finalData);
-              alert("Phase A complete. Voice conversation comes in Phase B.");
+              sessionStorage.setItem("rolematch_cv", JSON.stringify(finalData));
+              router.push("/conversation");
             }}
             onBack={() => {
               setCvData(null);
