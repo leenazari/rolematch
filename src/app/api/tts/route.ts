@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const VOICE_ID = "bDTlr4ICxntY9qVWyL0o";
+const VOICE_ID = "QMSGabqYzk8YAneQYYvR";
 const MODEL_ID = "eleven_turbo_v2_5";
 
 export async function POST(req: NextRequest) {
