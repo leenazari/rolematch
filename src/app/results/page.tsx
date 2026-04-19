@@ -1,334 +1,137 @@
-"use client";
+import { NextRequest, NextResponse } from "next/server";
+import { anthropic, SONNET } from "@/lib/anthropic";
+import type { CVData, Message } from "@/types";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { CVData, Message, ResultsData, RoleMatch } from "@/types";
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
-const CATEGORY_TITLES = {
-  pivot: "Roles you might not have considered",
-  stretch: "Roles worth growing into",
-  strong: "Roles you could walk into",
+type Body = {
+  cvData: CVData;
+  conversation: Message[];
 };
 
-const CATEGORY_BLURBS = {
-  pivot: "Lateral moves into different sectors where your skills transfer in unexpected ways.",
-  stretch: "Slightly above your current level or in adjacent sectors. Realistic with some growth.",
-  strong: "Direct fits based on your experience and what you told us you want.",
-};
+const RESULTS_PROMPT = `You are RoleMatch, a thoughtful UK career consultant. You've just had a voice conversation with a user about what kind of work would genuinely fit them. Now you generate their personalised role recommendations.
 
-type SalaryTierKey = "entry" | "established" | "senior";
-const SALARY_TIERS: SalaryTierKey[] = ["entry", "established", "senior"];
+You will be given:
+- Their CV data
+- Their loved skills (ranked, #1 most loved)
+- Their avoid skills (rather not use much)
+- The full transcript of your conversation with them
 
-export default function ResultsPage() {
-  const router = useRouter();
-  const [cvData, setCvData] = useState<CVData | null>(null);
-  const [conversation, setConversation] = useState<Message[]>([]);
-  const [results, setResults] = useState<ResultsData | null>(null);
-  const [error, setError] = useState("");
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
+You must return EXACTLY this JSON structure. No preamble, no code fences, no commentary outside the JSON. No em dashes anywhere.
 
-  useEffect(() => {
-    const cvStr = sessionStorage.getItem("rolematch_cv");
-    const convStr = sessionStorage.getItem("rolematch_conversation");
-    if (!cvStr || !convStr) {
-      router.push("/");
-      return;
-    }
-    try {
-      const cv = JSON.parse(cvStr) as CVData;
-      const conv = JSON.parse(convStr) as Message[];
-      setCvData(cv);
-      setConversation(conv);
-
-      const cached = sessionStorage.getItem("rolematch_results");
-      if (cached) {
-        setResults(JSON.parse(cached));
-        return;
+{
+  "summary": "A 3-4 sentence summary in your own voice that captures what you heard from them. Reference specific things they actually said. This proves to the user that you listened. Start with 'From our chat I heard that...' or similar opener. Warm and accurate.",
+  "roles": [
+    {
+      "title": "Role title",
+      "category": "strong" | "stretch" | "pivot",
+      "consultantParagraph": "3-4 sentences. Sound like a thoughtful careers advisor explaining why this role and what they'd need. Reference SPECIFIC things from the conversation. Mention what experience they bring, what they'd need to develop, and what makes this role a real possibility for them. Personal, interesting, not corporate.",
+      "whyUnexpected": "ONLY for pivot roles. One sentence explaining why this role might not be on their radar but actually fits. Skip this field for strong and stretch.",
+      "yourStrengths": ["3-4 specific skills or experiences from their CV that map to this role"],
+      "developmentGaps": ["1-2 honest gaps they would need to close. Can be skills, experience, qualifications. Be specific."],
+      "nextStep": "One concrete suggestion. Could be a course (real UK provider where possible: Coursera, FutureLearn, OU, City & Guilds, CIPD), a certification, a type of entry role to target, or a specific action they could take this month.",
+      "salary": {
+        "entry": "string like £25-32k for someone new to this role in the UK",
+        "established": "string like £35-45k for 3-7 years in the role in the UK",
+        "senior": "string like £50-70k for senior or lead level in the UK",
+        "startingTier": "entry | established | senior"
       }
-
-      generateResults(cv, conv);
-    } catch {
-      router.push("/");
     }
-  }, [router]);
-
-  async function generateResults(cv: CVData, conv: Message[]) {
-    try {
-      const res = await fetch("/api/generate-results", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cvData: cv, conversation: conv }),
-      });
-      const json = await res.json();
-      if (!json.ok) {
-        setError(json.error || "Could not generate results.");
-        return;
-      }
-      setResults(json.data);
-      sessionStorage.setItem("rolematch_results", JSON.stringify(json.data));
-    } catch (e: any) {
-      setError("Something went wrong. Please refresh to try again.");
-    }
-  }
-
-  async function handleDownloadPdf() {
-    if (!cvData || !results) return;
-    setDownloadingPdf(true);
-    try {
-      const res = await fetch("/api/generate-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cvData, results }),
-      });
-      if (!res.ok) {
-        setError("PDF download failed. Please try again.");
-        setDownloadingPdf(false);
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const safeName = cvData.name.replace(/[^a-zA-Z0-9]+/g, "_");
-      a.download = `RoleMatch_${safeName}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setError("PDF download failed. Please try again.");
-    } finally {
-      setDownloadingPdf(false);
-    }
-  }
-
-  if (error) {
-    return (
-      <main className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-md">
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Something went wrong</h1>
-          <p className="text-slate-600 mb-6">{error}</p>
-          <button onClick={() => router.push("/")} className="text-indigo-600 underline">
-            Start over
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  if (!results) {
-    return (
-      <main className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-md">
-          <div className="inline-block w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-6"></div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Generating your recommendations</h2>
-          <p className="text-slate-600">This usually takes about thirty seconds. Hang tight.</p>
-        </div>
-      </main>
-    );
-  }
-
-  const groupedRoles = {
-    pivot: results.roles.filter((r) => r.category === "pivot"),
-    stretch: results.roles.filter((r) => r.category === "stretch"),
-    strong: results.roles.filter((r) => r.category === "strong"),
-  };
-
-  return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-10">
-          <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
-            RoleMatch
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight">
-            Your career direction
-          </h1>
-          {cvData && (
-            <p className="text-slate-600">For {cvData.name}</p>
-          )}
-        </div>
-
-        <div className="flex justify-center mb-10">
-          <button
-            onClick={handleDownloadPdf}
-            disabled={downloadingPdf}
-            className="px-6 py-3 bg-white border-2 border-indigo-300 text-indigo-700 rounded-xl hover:bg-indigo-50 font-medium disabled:opacity-40"
-          >
-            {downloadingPdf ? "Building PDF..." : "Download as PDF"}
-          </button>
-        </div>
-
-        <div className="bg-indigo-50 border-l-4 border-indigo-600 rounded-r-2xl p-6 mb-10">
-          <div className="text-xs font-semibold uppercase tracking-wider text-indigo-700 mb-2">
-            What we heard from you
-          </div>
-          <p className="text-lg text-slate-800 leading-relaxed">
-            {results.summary}
-          </p>
-        </div>
-
-        <RoleSection category="pivot" roles={groupedRoles.pivot} />
-        <RoleSection category="stretch" roles={groupedRoles.stretch} />
-        <RoleSection category="strong" roles={groupedRoles.strong} />
-
-        <p className="text-xs text-slate-400 italic text-center mt-8 max-w-2xl mx-auto">
-          Salary ranges are estimates based on UK averages and can vary by region, employer, and your specific background. Use them as a guide, not a guarantee.
-        </p>
-
-        <div className="mt-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-3xl p-10 text-center shadow-xl shadow-indigo-200">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
-            Ready to practise interviewing for these roles?
-          </h2>
-          <p className="text-indigo-100 mb-6 max-w-xl mx-auto">
-            RoleMatch is part of Interviewa. Practise real interviews with our AI interviewer, get instant feedback, and walk in confident on the day.
-          </p>
-          
-            href="https://interviewa.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block px-8 py-4 bg-white text-indigo-700 rounded-2xl font-semibold hover:bg-indigo-50 shadow-lg"
-          >
-            Try Interviewa
-          </a>
-        </div>
-
-        <div className="text-center mt-8">
-          <button
-            onClick={() => {
-              sessionStorage.clear();
-              router.push("/");
-            }}
-            className="text-sm text-slate-400 hover:text-slate-600 underline"
-          >
-            Start a new session
-          </button>
-        </div>
-      </div>
-    </main>
-  );
+  ]
 }
 
-type RoleSectionProps = {
-  category: "pivot" | "stretch" | "strong";
-  roles: RoleMatch[];
-};
+REQUIREMENTS
 
-function RoleSection(props: RoleSectionProps) {
-  const { category, roles } = props;
-  if (roles.length === 0) return null;
+1. Return EXACTLY 7 roles in this exact order:
+   - 2 PIVOT roles first (lateral moves into different sectors where their skills genuinely transfer)
+   - 2 STRETCH roles next (slightly above current level or in adjacent sectors, realistic with growth)
+   - 3 STRONG roles last (direct fit based on CV experience plus what they said they want)
 
-  return (
-    <section className="mb-10">
-      <div className="mb-5 px-2">
-        <h2 className="text-xl md:text-2xl font-bold text-slate-900 mb-1">
-          {CATEGORY_TITLES[category]}
-        </h2>
-        <p className="text-sm text-slate-500">{CATEGORY_BLURBS[category]}</p>
-      </div>
+2. Pivot roles are the magic. They should be sectors or job families the user almost certainly hasn't considered, BUT where the skills genuinely transfer. Examples: a retail manager pivoting to operations management at a SaaS company. A burnt-out teacher pivoting to L&D at a corporate. A hospitality manager pivoting to event coordination at a charity. The pivot should feel revealing, not random.
 
-      <div className="space-y-4">
-        {roles.map((role, idx) => (
-          <RoleCard key={`${category}-${idx}`} role={role} />
-        ))}
-      </div>
-    </section>
-  );
-}
+3. Use British English. Use £ for salary. Use UK job titles and UK companies as references. UK course providers only (Coursera UK, FutureLearn, Open University, City & Guilds, CIPD, ILM, AAT, etc).
 
-type RoleCardProps = {
-  role: RoleMatch;
-};
+4. Calibrate salaries realistically for the UK in 2025-2026. Be honest. Don't inflate London numbers if the user is regional. The startingTier should reflect their actual experience level for THIS specific role (not their general experience). Someone with 8 years of retail experience pivoting to a totally new sector starts at "entry" for that new sector even if they're "established" in retail.
 
-function RoleCard(props: RoleCardProps) {
-  const { role } = props;
-  const isPivot = role.category === "pivot";
+5. The consultant paragraph must reference specific things from the conversation. If they said they loved coaching at Tesco, reference it. If they said they want to stay in the West Midlands, reference it. If they're worried about getting stuck, reference it. Never write generic content.
 
-  return (
-    <div className="bg-white rounded-2xl p-6 md:p-7 border border-slate-200 shadow-sm">
-      <h3 className="text-2xl font-bold text-slate-900 mb-3">{role.title}</h3>
+6. The user's #1 loved skill must be honoured in at least 3 of the 7 roles. The avoid skills must be respected: don't recommend roles where the avoid skills are central.
 
-      {isPivot && role.whyUnexpected && (
-        <div className="bg-purple-50 border-l-4 border-purple-400 rounded-r-lg px-4 py-3 mb-4">
-          <p className="text-sm text-purple-900">
-            <span className="font-semibold">Why this could fit: </span>
-            {role.whyUnexpected}
-          </p>
-        </div>
-      )}
+7. Lifestyle constraints from the conversation must be respected. If they said they want hybrid working and live near Birmingham, don't suggest a London-only office role.
 
-      <p className="text-slate-700 leading-relaxed mb-5">
-        {role.consultantParagraph}
-      </p>
+8. AVOID these phrases: "amazing", "love that", "100%", "for sure", "absolutely", "totally", "passionate". No emoji. No exclamation marks. No em dashes. No en dashes.
 
-      <div className="grid md:grid-cols-2 gap-5 mb-5">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            What you bring
-          </div>
-          <ul className="space-y-1">
-            {role.yourStrengths.map((s, i) => (
-              <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
-                <span className="text-indigo-500 mt-0.5">•</span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+9. Salary ranges should be wider rather than narrow (e.g. "£28-36k" not "£32k") to be defensible across regions and employers.
 
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            What to develop
-          </div>
-          <ul className="space-y-1">
-            {role.developmentGaps.map((g, i) => (
-              <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
-                <span className="text-amber-500 mt-0.5">•</span>
-                <span>{g}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+10. The "developmentGaps" should be honest but not depressing. Frame as growth areas, not deficiencies. Example: "Stronger commercial finance fundamentals" not "Lacks finance knowledge".`;
 
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-amber-800 mb-1">
-          Suggested next step
-        </div>
-        <p className="text-sm text-amber-900">{role.nextStep}</p>
-      </div>
+export async function POST(req: NextRequest) {
+  try {
+    const body: Body = await req.json();
+    const { cvData, conversation } = body;
 
-      <div className="grid grid-cols-3 gap-2">
-        {SALARY_TIERS.map((tier) => {
-          const isActive = role.salary.startingTier === tier;
-          return (
-            <div
-              key={tier}
-              className={`rounded-lg p-3 ${
-                isActive
-                  ? "bg-indigo-50 border-2 border-indigo-500"
-                  : "bg-slate-50 border border-slate-200"
-              }`}
-            >
-              <div
-                className={`text-xs uppercase tracking-wider font-semibold mb-1 ${
-                  isActive ? "text-indigo-700" : "text-slate-500"
-                }`}
-              >
-                {tier}
-              </div>
-              <div className="text-base font-bold text-slate-900">
-                {role.salary[tier]}
-              </div>
-              {isActive && (
-                <div className="text-xs text-indigo-600 font-semibold mt-1">
-                  YOU START HERE
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+    if (!cvData || !conversation) {
+      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    }
+
+    const lovedSkillsLine =
+      cvData.lovedSkills && cvData.lovedSkills.length > 0
+        ? cvData.lovedSkills.map((s, i) => i + 1 + ". " + s).join("; ")
+        : "(none specified)";
+
+    const avoidSkillsLine =
+      cvData.avoidSkills && cvData.avoidSkills.length > 0
+        ? cvData.avoidSkills.join(", ")
+        : "(none specified)";
+
+    const cvLines = [
+      "Name: " + cvData.name,
+      "Current role: " + cvData.currentRole,
+      "Sector: " + cvData.sector,
+      "Years of experience: " + cvData.yearsExperience,
+      "Key skills: " + cvData.keySkills.join(", "),
+      "LOVED SKILLS (ranked, #1 most loved): " + lovedSkillsLine,
+      "AVOID SKILLS (rather not use much): " + avoidSkillsLine,
+      "Education: " + cvData.education,
+      "Notable employers: " + cvData.notableEmployers.join(", "),
+    ];
+    const cvSummary = cvLines.join("\n");
+
+    const conversationLog = conversation
+      .map((m) => (m.role === "ai" ? "RoleMatch" : "User") + ": " + m.text)
+      .join("\n\n");
+
+    const userPrompt =
+      "CV DATA\n" +
+      cvSummary +
+      "\n\nFULL CONVERSATION TRANSCRIPT\n" +
+      conversationLog +
+      "\n\nNow generate their 7 role recommendations as JSON. Remember: 2 pivot first, then 2 stretch, then 3 strong. Reference specific things they said. UK salaries. British English. JSON only.";
+
+    const msg = await anthropic.messages.create({
+      model: SONNET,
+      max_tokens: 8000,
+      system: RESULTS_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = msg.content.find((b) => b.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      throw new Error("No text response from AI");
+    }
+
+    let cleaned = textBlock.text.trim();
+    cleaned = cleaned.replace(/```json|```/g, "").trim();
+
+    const data = JSON.parse(cleaned);
+
+    return NextResponse.json({ ok: true, data });
+  } catch (e: any) {
+    console.error("generate-results error:", e);
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Failed to generate results" },
+      { status: 500 }
+    );
+  }
 }
