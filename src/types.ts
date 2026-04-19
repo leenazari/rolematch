@@ -40,3 +40,32 @@ export type NextQuestionResponse = {
   coachingUsed?: boolean;
   error?: string;
 };
+
+export type SalaryTiers = {
+  entry: string;
+  established: string;
+  senior: string;
+  startingTier: "entry" | "established" | "senior";
+};
+
+export type RoleMatch = {
+  title: string;
+  category: "strong" | "stretch" | "pivot";
+  consultantParagraph: string;
+  whyUnexpected?: string;
+  yourStrengths: string[];
+  developmentGaps: string[];
+  nextStep: string;
+  salary: SalaryTiers;
+};
+
+export type ResultsData = {
+  summary: string;
+  roles: RoleMatch[];
+};
+
+export type GenerateResultsResponse = {
+  ok: boolean;
+  data?: ResultsData;
+  error?: string;
+};
