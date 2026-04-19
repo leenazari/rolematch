@@ -4,30 +4,148 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CVData, Message, ResultsData, RoleMatch } from "@/types";
 
-const CATEGORY_TITLES = {
-  pivot: "Roles you might not have considered",
-  stretch: "Roles worth growing into",
-  strong: "Roles you could walk into",
+const PIVOT_TITLE = "Roles you might not have considered";
+const PIVOT_BLURB = "Lateral moves into different sectors where your skills transfer in unexpected ways.";
+const STRETCH_TITLE = "Roles worth growing into";
+const STRETCH_BLURB = "Slightly above your current level or in adjacent sectors. Realistic with some growth.";
+const STRONG_TITLE = "Roles you could walk into";
+const STRONG_BLURB = "Direct fits based on your experience and what you told us you want.";
+
+const SALARY_TIERS = ["entry", "established", "senior"];
+
+type RoleSectionProps = {
+  title: string;
+  blurb: string;
+  roles: RoleMatch[];
 };
 
-const CATEGORY_BLURBS = {
-  pivot: "Lateral moves into different sectors where your skills transfer in unexpected ways.",
-  stretch: "Slightly above your current level or in adjacent sectors. Realistic with some growth.",
-  strong: "Direct fits based on your experience and what you told us you want.",
+type RoleCardProps = {
+  role: RoleMatch;
 };
 
-type SalaryTierKey = "entry" | "established" | "senior";
-const SALARY_TIERS: SalaryTierKey[] = ["entry", "established", "senior"];
+function RoleCard(props: RoleCardProps) {
+  const role = props.role;
+  const isPivot = role.category === "pivot";
+
+  return (
+    <div className="bg-white rounded-2xl p-6 md:p-7 border border-slate-200 shadow-sm">
+      <h3 className="text-2xl font-bold text-slate-900 mb-3">{role.title}</h3>
+
+      {isPivot && role.whyUnexpected ? (
+        <div className="bg-purple-50 border-l-4 border-purple-400 rounded-r-lg px-4 py-3 mb-4">
+          <p className="text-sm text-purple-900">
+            <span className="font-semibold">Why this could fit: </span>
+            {role.whyUnexpected}
+          </p>
+        </div>
+      ) : null}
+
+      <p className="text-slate-700 leading-relaxed mb-5">
+        {role.consultantParagraph}
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-5 mb-5">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            What you bring
+          </div>
+          <ul className="space-y-1">
+            {role.yourStrengths.map(function (s, i) {
+              return (
+                <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
+                  <span className="text-indigo-500 mt-0.5">•</span>
+                  <span>{s}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            What to develop
+          </div>
+          <ul className="space-y-1">
+            {role.developmentGaps.map(function (g, i) {
+              return (
+                <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
+                  <span className="text-amber-500 mt-0.5">•</span>
+                  <span>{g}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-5">
+        <div className="text-xs font-semibold uppercase tracking-wider text-amber-800 mb-1">
+          Suggested next step
+        </div>
+        <p className="text-sm text-amber-900">{role.nextStep}</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {SALARY_TIERS.map(function (tier) {
+          const isActive = role.salary.startingTier === tier;
+          const tierKey = tier as "entry" | "established" | "senior";
+          return (
+            <div
+              key={tier}
+              className={isActive ? "rounded-lg p-3 bg-indigo-50 border-2 border-indigo-500" : "rounded-lg p-3 bg-slate-50 border border-slate-200"}
+            >
+              <div className={isActive ? "text-xs uppercase tracking-wider font-semibold mb-1 text-indigo-700" : "text-xs uppercase tracking-wider font-semibold mb-1 text-slate-500"}>
+                {tier}
+              </div>
+              <div className="text-base font-bold text-slate-900">
+                {role.salary[tierKey]}
+              </div>
+              {isActive ? (
+                <div className="text-xs text-indigo-600 font-semibold mt-1">
+                  YOU START HERE
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RoleSection(props: RoleSectionProps) {
+  const title = props.title;
+  const blurb = props.blurb;
+  const roles = props.roles;
+
+  if (roles.length === 0) return null;
+
+  return (
+    <section className="mb-10">
+      <div className="mb-5 px-2">
+        <h2 className="text-xl md:text-2xl font-bold text-slate-900 mb-1">
+          {title}
+        </h2>
+        <p className="text-sm text-slate-500">{blurb}</p>
+      </div>
+
+      <div className="space-y-4">
+        {roles.map(function (role, idx) {
+          return <RoleCard key={idx} role={role} />;
+        })}
+      </div>
+    </section>
+  );
+}
 
 export default function ResultsPage() {
   const router = useRouter();
   const [cvData, setCvData] = useState<CVData | null>(null);
-  const [conversation, setConversation] = useState<Message[]>([]);
   const [results, setResults] = useState<ResultsData | null>(null);
   const [error, setError] = useState("");
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  useEffect(() => {
+  useEffect(function () {
     const cvStr = sessionStorage.getItem("rolematch_cv");
     const convStr = sessionStorage.getItem("rolematch_conversation");
     if (!cvStr || !convStr) {
@@ -35,10 +153,9 @@ export default function ResultsPage() {
       return;
     }
     try {
-      const cv = JSON.parse(cvStr) as CVData;
-      const conv = JSON.parse(convStr) as Message[];
+      const cv = JSON.parse(cvStr);
+      const conv = JSON.parse(convStr);
       setCvData(cv);
-      setConversation(conv);
 
       const cached = sessionStorage.getItem("rolematch_results");
       if (cached) {
@@ -47,7 +164,7 @@ export default function ResultsPage() {
       }
 
       generateResults(cv, conv);
-    } catch {
+    } catch (e) {
       router.push("/");
     }
   }, [router]);
@@ -66,7 +183,7 @@ export default function ResultsPage() {
       }
       setResults(json.data);
       sessionStorage.setItem("rolematch_results", JSON.stringify(json.data));
-    } catch (e: any) {
+    } catch (e) {
       setError("Something went wrong. Please refresh to try again.");
     }
   }
@@ -90,7 +207,7 @@ export default function ResultsPage() {
       const a = document.createElement("a");
       a.href = url;
       const safeName = cvData.name.replace(/[^a-zA-Z0-9]+/g, "_");
-      a.download = `RoleMatch_${safeName}.pdf`;
+      a.download = "RoleMatch_" + safeName + ".pdf";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -108,7 +225,7 @@ export default function ResultsPage() {
         <div className="text-center max-w-md">
           <h1 className="text-2xl font-bold text-slate-900 mb-4">Something went wrong</h1>
           <p className="text-slate-600 mb-6">{error}</p>
-          <button onClick={() => router.push("/")} className="text-indigo-600 underline">
+          <button onClick={function () { router.push("/"); }} className="text-indigo-600 underline">
             Start over
           </button>
         </div>
@@ -128,11 +245,9 @@ export default function ResultsPage() {
     );
   }
 
-  const groupedRoles = {
-    pivot: results.roles.filter((r) => r.category === "pivot"),
-    stretch: results.roles.filter((r) => r.category === "stretch"),
-    strong: results.roles.filter((r) => r.category === "strong"),
-  };
+  const pivotRoles = results.roles.filter(function (r) { return r.category === "pivot"; });
+  const stretchRoles = results.roles.filter(function (r) { return r.category === "stretch"; });
+  const strongRoles = results.roles.filter(function (r) { return r.category === "strong"; });
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
@@ -144,9 +259,9 @@ export default function ResultsPage() {
           <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight">
             Your career direction
           </h1>
-          {cvData && (
+          {cvData ? (
             <p className="text-slate-600">For {cvData.name}</p>
-          )}
+          ) : null}
         </div>
 
         <div className="flex justify-center mb-10">
@@ -168,9 +283,9 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        <RoleSection category="pivot" roles={groupedRoles.pivot} />
-        <RoleSection category="stretch" roles={groupedRoles.stretch} />
-        <RoleSection category="strong" roles={groupedRoles.strong} />
+        <RoleSection title={PIVOT_TITLE} blurb={PIVOT_BLURB} roles={pivotRoles} />
+        <RoleSection title={STRETCH_TITLE} blurb={STRETCH_BLURB} roles={stretchRoles} />
+        <RoleSection title={STRONG_TITLE} blurb={STRONG_BLURB} roles={strongRoles} />
 
         <p className="text-xs text-slate-400 italic text-center mt-8 max-w-2xl mx-auto">
           Salary ranges are estimates based on UK averages and can vary by region, employer, and your specific background. Use them as a guide, not a guarantee.
@@ -195,7 +310,7 @@ export default function ResultsPage() {
 
         <div className="text-center mt-8">
           <button
-            onClick={() => {
+            onClick={function () {
               sessionStorage.clear();
               router.push("/");
             }}
@@ -206,129 +321,5 @@ export default function ResultsPage() {
         </div>
       </div>
     </main>
-  );
-}
-
-type RoleSectionProps = {
-  category: "pivot" | "stretch" | "strong";
-  roles: RoleMatch[];
-};
-
-function RoleSection(props: RoleSectionProps) {
-  const { category, roles } = props;
-  if (roles.length === 0) return null;
-
-  return (
-    <section className="mb-10">
-      <div className="mb-5 px-2">
-        <h2 className="text-xl md:text-2xl font-bold text-slate-900 mb-1">
-          {CATEGORY_TITLES[category]}
-        </h2>
-        <p className="text-sm text-slate-500">{CATEGORY_BLURBS[category]}</p>
-      </div>
-
-      <div className="space-y-4">
-        {roles.map((role, idx) => (
-          <RoleCard key={`${category}-${idx}`} role={role} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-type RoleCardProps = {
-  role: RoleMatch;
-};
-
-function RoleCard(props: RoleCardProps) {
-  const { role } = props;
-  const isPivot = role.category === "pivot";
-
-  return (
-    <div className="bg-white rounded-2xl p-6 md:p-7 border border-slate-200 shadow-sm">
-      <h3 className="text-2xl font-bold text-slate-900 mb-3">{role.title}</h3>
-
-      {isPivot && role.whyUnexpected && (
-        <div className="bg-purple-50 border-l-4 border-purple-400 rounded-r-lg px-4 py-3 mb-4">
-          <p className="text-sm text-purple-900">
-            <span className="font-semibold">Why this could fit: </span>
-            {role.whyUnexpected}
-          </p>
-        </div>
-      )}
-
-      <p className="text-slate-700 leading-relaxed mb-5">
-        {role.consultantParagraph}
-      </p>
-
-      <div className="grid md:grid-cols-2 gap-5 mb-5">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            What you bring
-          </div>
-          <ul className="space-y-1">
-            {role.yourStrengths.map((s, i) => (
-              <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
-                <span className="text-indigo-500 mt-0.5">•</span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            What to develop
-          </div>
-          <ul className="space-y-1">
-            {role.developmentGaps.map((g, i) => (
-              <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
-                <span className="text-amber-500 mt-0.5">•</span>
-                <span>{g}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-amber-800 mb-1">
-          Suggested next step
-        </div>
-        <p className="text-sm text-amber-900">{role.nextStep}</p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        {SALARY_TIERS.map((tier) => {
-          const isActive = role.salary.startingTier === tier;
-          return (
-            <div
-              key={tier}
-              className={`rounded-lg p-3 ${
-                isActive
-                  ? "bg-indigo-50 border-2 border-indigo-500"
-                  : "bg-slate-50 border border-slate-200"
-              }`}
-            >
-              <div
-                className={`text-xs uppercase tracking-wider font-semibold mb-1 ${
-                  isActive ? "text-indigo-700" : "text-slate-500"
-                }`}
-              >
-                {tier}
-              </div>
-              <div className="text-base font-bold text-slate-900">
-                {role.salary[tier]}
-              </div>
-              {isActive && (
-                <div className="text-xs text-indigo-600 font-semibold mt-1">
-                  YOU START HERE
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
