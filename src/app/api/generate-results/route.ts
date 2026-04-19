@@ -3,7 +3,7 @@ import { anthropic, SONNET } from "@/lib/anthropic";
 import type { CVData, Message } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type Body = {
   cvData: CVData;
