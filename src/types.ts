@@ -26,6 +26,7 @@ export type ConversationState = {
   currentQuestion: number;
   followUpsThisQuestion: number;
   finished: boolean;
+  coachingUsed: boolean;
 };
 
 export type NextQuestionResponse = {
@@ -34,5 +35,6 @@ export type NextQuestionResponse = {
   questionNumber?: number;
   followUpsThisQuestion?: number;
   finished?: boolean;
+  coachingUsed?: boolean;
   error?: string;
 };
