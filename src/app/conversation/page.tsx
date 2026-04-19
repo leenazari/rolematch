@@ -9,6 +9,18 @@ import type { CVData, Message } from "@/types";
 
 type Phase = "idle" | "ai_speaking" | "listening" | "finalising" | "reviewing" | "thinking";
 
+function buildIntro(firstName: string): string {
+  return (
+    "Hi " + firstName + ". Good to meet you properly. " +
+    "Quick thing before we start. " +
+    "I'm not here to tell you what to do. I'm here to help you figure out what you actually want from your next move. " +
+    "I'll ask you six questions and the more honest you are, the better this works. " +
+    "There's no right answer and nothing gets judged. " +
+    "At the end I'll pull together a few role ideas that fit what you've told me, not just your CV. " +
+    "OK, here's the first one..."
+  );
+}
+
 export default function ConversationPage() {
   const router = useRouter();
   const [cvData, setCvData] = useState<CVData | null>(null);
@@ -20,6 +32,7 @@ export default function ConversationPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [draftAnswer, setDraftAnswer] = useState("");
+  const [introText, setIntroText] = useState("");
 
   const { supported: voiceSupported, listening, transcript, interim, start, stop, hardReset } = useSpeechRecognition();
   const { speak, speaking, stopSpeaking } = useSpeechSynthesis();
@@ -46,7 +59,16 @@ export default function ConversationPage() {
   async function startConversation() {
     if (!cvData) return;
     setHasStarted(true);
-    await fetchNextQuestion([], 1, 0, false);
+
+    const firstName = cvData.name.split(" ")[0];
+    const intro = buildIntro(firstName);
+    setIntroText(intro);
+    setPhase("ai_speaking");
+
+    speak(intro, function () {
+      setIntroText("");
+      fetchNextQuestion([], 1, 0, false);
+    });
   }
 
   async function fetchNextQuestion(
@@ -170,6 +192,7 @@ export default function ConversationPage() {
 
   const latestAi = [...messages].reverse().find(function (m) { return m.role === "ai"; });
   const reversedMessages = [...messages].reverse();
+  const isPlayingIntro = introText !== "";
 
   const orbState =
     phase === "ai_speaking" ? "speaking" :
@@ -185,7 +208,7 @@ export default function ConversationPage() {
           <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
             RoleMatch
           </div>
-          {!finished && hasStarted ? (
+          {!finished && hasStarted && !isPlayingIntro ? (
             <p className="text-slate-500 text-sm">Question {currentQuestion} of 6</p>
           ) : null}
         </div>
@@ -217,7 +240,16 @@ export default function ConversationPage() {
               <VoiceOrb state={orbState} />
             </div>
 
-            {latestAi ? (
+            {isPlayingIntro ? (
+              <div className="bg-white rounded-3xl p-8 mb-6 border border-slate-200 shadow-sm">
+                <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-3 text-center">
+                  RoleMatch
+                </div>
+                <p className="text-xl md:text-2xl text-slate-900 leading-relaxed text-center font-medium">
+                  {introText}
+                </p>
+              </div>
+            ) : latestAi ? (
               <div className="bg-white rounded-3xl p-8 mb-6 border border-slate-200 shadow-sm">
                 <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-3 text-center">
                   RoleMatch
@@ -276,7 +308,7 @@ export default function ConversationPage() {
                   disabled
                   className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
                 >
-                  Wait for me to finish...
+                  {isPlayingIntro ? "Getting ready..." : "Wait for me to finish..."}
                 </button>
               ) : null}
 
