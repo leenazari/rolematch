@@ -29,13 +29,13 @@ You must return EXACTLY this JSON structure. No preamble, no code fences, no com
       "consultantParagraph": "3-4 sentences. Sound like a thoughtful careers advisor explaining why this role and what they'd need. Reference SPECIFIC things from the conversation. Mention what experience they bring, what they'd need to develop, and what makes this role a real possibility for them. Personal, interesting, not corporate.",
       "whyUnexpected": "ONLY for pivot roles. One sentence explaining why this role might not be on their radar but actually fits. Skip this field for strong and stretch.",
       "yourStrengths": ["3-4 specific skills or experiences from their CV that map to this role"],
-      "developmentGaps": ["1-2 honest gaps they'd need to close. Can be skills, experience, qualifications. Be specific."],
+      "developmentGaps": ["1-2 honest gaps they would need to close. Can be skills, experience, qualifications. Be specific."],
       "nextStep": "One concrete suggestion. Could be a course (real UK provider where possible: Coursera, FutureLearn, OU, City & Guilds, CIPD), a certification, a type of entry role to target, or a specific action they could take this month.",
       "salary": {
-        "entry": "£X-Yk (UK realistic for someone new to this role)",
-        "established": "£X-Yk (UK realistic for 3-7 years in the role)",
-        "senior": "£X-Yk (UK realistic for senior or lead level)",
-        "startingTier": "entry" | "established" | "senior"
+        "entry": "string like £25-32k for someone new to this role in the UK",
+        "established": "string like £35-45k for 3-7 years in the role in the UK",
+        "senior": "string like £50-70k for senior or lead level in the UK",
+        "startingTier": "entry | established | senior"
       }
     }
   ]
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
     const lovedSkillsLine =
       cvData.lovedSkills && cvData.lovedSkills.length > 0
-        ? cvData.lovedSkills.map((s, i) => `${i + 1}. ${s}`).join("; ")
+        ? cvData.lovedSkills.map((s, i) => i + 1 + ". " + s).join("; ")
         : "(none specified)";
 
     const avoidSkillsLine =
@@ -85,6 +85,53 @@ export async function POST(req: NextRequest) {
         ? cvData.avoidSkills.join(", ")
         : "(none specified)";
 
-    const cvSummary = `Name: ${cvData.name}
-Current role: ${cvData.currentRole}
-Sector
+    const cvLines = [
+      "Name: " + cvData.name,
+      "Current role: " + cvData.currentRole,
+      "Sector: " + cvData.sector,
+      "Years of experience: " + cvData.yearsExperience,
+      "Key skills: " + cvData.keySkills.join(", "),
+      "LOVED SKILLS (ranked, #1 most loved): " + lovedSkillsLine,
+      "AVOID SKILLS (rather not use much): " + avoidSkillsLine,
+      "Education: " + cvData.education,
+      "Notable employers: " + cvData.notableEmployers.join(", "),
+    ];
+    const cvSummary = cvLines.join("\n");
+
+    const conversationLog = conversation
+      .map((m) => (m.role === "ai" ? "RoleMatch" : "User") + ": " + m.text)
+      .join("\n\n");
+
+    const userPrompt =
+      "CV DATA\n" +
+      cvSummary +
+      "\n\nFULL CONVERSATION TRANSCRIPT\n" +
+      conversationLog +
+      "\n\nNow generate their 7 role recommendations as JSON. Remember: 2 pivot first, then 2 stretch, then 3 strong. Reference specific things they said. UK salaries. British English. JSON only.";
+
+    const msg = await anthropic.messages.create({
+      model: SONNET,
+      max_tokens: 8000,
+      system: RESULTS_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = msg.content.find((b) => b.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      throw new Error("No text response from AI");
+    }
+
+    let cleaned = textBlock.text.trim();
+    cleaned = cleaned.replace(/```json|```/g, "").trim();
+
+    const data = JSON.parse(cleaned);
+
+    return NextResponse.json({ ok: true, data });
+  } catch (e: any) {
+    console.error("generate-results error:", e);
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Failed to generate results" },
+      { status: 500 }
+    );
+  }
+}
