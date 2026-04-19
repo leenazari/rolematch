@@ -11,15 +11,6 @@ type Phase = "idle" | "ai_speaking" | "listening" | "finalising" | "reviewing" |
 
 const INTRO_VIDEO_URL = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/rolematch.mp4";
 
-const INTRO_TEXT =
-  "Hi there, good to meet you properly. " +
-  "Quick thing before we start. " +
-  "I'm not here to tell you what to do. I'm here to help you figure out what you actually want from your next move. " +
-  "I'll ask you six questions and the more honest you are, the better this works. " +
-  "There's no right answer and nothing gets judged. " +
-  "At the end I'll pull together a few role ideas that fit what you've told me, not just your CV. " +
-  "OK, here's the first one...";
-
 export default function ConversationPage() {
   const router = useRouter();
   const [cvData, setCvData] = useState<CVData | null>(null);
@@ -59,10 +50,12 @@ export default function ConversationPage() {
 
   async function startConversation() {
     if (!cvData) return;
+    if (!sessionStorage.getItem("rolematch_started_at")) {
+      sessionStorage.setItem("rolematch_started_at", new Date().toISOString());
+    }
     setHasStarted(true);
     setIntroPlaying(true);
     setPhase("ai_speaking");
-    // Video playback handled by the <video> element; handleIntroEnd fires on completion
   }
 
   function handleIntroEnd() {
@@ -101,26 +94,40 @@ export default function ConversationPage() {
         setPhase("idle");
         return;
       }
+
+      const cleanedText = (json.text || "")
+        .replace(/[—–―−‒]/g, ", ")
+        .replace(/\s+-\s+/g, ", ")
+        .replace(/,\s*,/g, ",")
+        .replace(/\s+/g, " ")
+        .trim();
+
       if (json.finished) {
         setFinished(true);
-        const finalText = json.text || "Thanks for that. I've got enough to work with. Generating your role recommendations now, give me about thirty seconds.";
+        const fallback = "Thanks for that. I've got enough to work with. Generating your role recommendations now, give me about thirty seconds.";
+        const finalText = cleanedText || fallback;
         const aiMsg: Message = { role: "ai", text: finalText, questionNumber: json.questionNumber };
         const finalHistory = [...history, aiMsg];
         setMessages(finalHistory);
         setPhase("ai_speaking");
         speak(finalText, function () {
           sessionStorage.setItem("rolematch_conversation", JSON.stringify(finalHistory));
+          sessionStorage.setItem("rolematch_finished_at", new Date().toISOString());
           router.push("/results");
         });
         return;
       }
-      const aiMsg: Message = { role: "ai", text: json.text!, questionNumber: json.questionNumber };
+
+      const aiMsg: Message = { role: "ai", text: cleanedText, questionNumber: json.questionNumber };
+      if (json.isGoldenThreadProbe === true) {
+        (aiMsg as any).isGoldenThreadProbe = true;
+      }
       setMessages(function (prev) { return [...prev, aiMsg]; });
       setCurrentQuestion(json.questionNumber!);
       setFollowUpsThisQuestion(json.followUpsThisQuestion!);
       if (typeof json.coachingUsed === "boolean") setCoachingUsed(json.coachingUsed);
       setPhase("ai_speaking");
-      speak(json.text!, function () {
+      speak(cleanedText, function () {
         setPhase("idle");
       });
     } catch (e) {
@@ -214,8 +221,8 @@ export default function ConversationPage() {
             RoleMatch
           </div>
           {!finished && hasStarted && !introPlaying && currentQuestion <= 7 ? (
-  <p className="text-slate-500 text-sm">Question {Math.min(currentQuestion, 7)} of 7</p>
-) : null}
+            <p className="text-slate-500 text-sm">Question {Math.min(currentQuestion, 7)} of 7</p>
+          ) : null}
         </div>
 
         {!hasStarted ? (
@@ -227,7 +234,7 @@ export default function ConversationPage() {
               Hi {cvData.name.split(" ")[0]}, ready to talk?
             </h1>
             <p className="text-slate-600 mb-2">
-              We'll go through six questions about what you actually want from work. Should take about ten minutes.
+              We'll go through seven questions about what you actually want from work. Should take about ten minutes.
             </p>
             <p className="text-slate-500 text-sm mb-8">
               Speak naturally. There are no right answers. The more honest you are, the better the suggestions.
