@@ -213,9 +213,9 @@ export default function ConversationPage() {
           <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
             RoleMatch
           </div>
-          {!finished && hasStarted && !introPlaying ? (
-            <p className="text-slate-500 text-sm">Question {currentQuestion} of 6</p>
-          ) : null}
+          {!finished && hasStarted && !introPlaying && currentQuestion <= 7 ? (
+  <p className="text-slate-500 text-sm">Question {Math.min(currentQuestion, 7)} of 7</p>
+) : null}
         </div>
 
         {!hasStarted ? (
