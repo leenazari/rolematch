@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { renderToStream, Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
+import { renderToStream, Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import { createElement } from "react";
 import type { ResultsData, CVData } from "@/types";
 
@@ -214,17 +214,10 @@ const styles = StyleSheet.create({
   },
 });
 
-const CATEGORY_LABELS = {
-  pivot: "Roles you might not have considered",
-  stretch: "Roles worth growing into",
-  strong: "Roles you could walk into",
-};
-
-const CATEGORY_DESCRIPTIONS = {
-  pivot: "Lateral moves into different sectors where your skills transfer in unexpected ways.",
-  stretch: "Slightly above your current level or in adjacent sectors. Realistic with some growth.",
-  strong: "Direct fits based on your experience and what you told us you want.",
-};
+const RECOMMENDED_LABEL = "Recommended";
+const RECOMMENDED_DESCRIPTION = "Roles where your experience and what you told us point clearly. Ordered by best fit.";
+const CONSIDER_LABEL = "Have you thought about...";
+const CONSIDER_DESCRIPTION = "Less obvious moves where your skills genuinely transfer in unexpected ways. Worth considering even if they're outside your usual world.";
 
 function buildPdfDocument(cvData: CVData, results: ResultsData) {
   const today = new Date().toLocaleDateString("en-GB", {
@@ -233,16 +226,18 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
     year: "numeric",
   });
 
-  const groupedRoles = {
-    pivot: results.roles.filter((r) => r.category === "pivot"),
-    stretch: results.roles.filter((r) => r.category === "stretch"),
-    strong: results.roles.filter((r) => r.category === "strong"),
-  };
+  const recommendedRoles = results.roles
+    .filter(function (r) { return r.category === "recommended"; })
+    .sort(function (a, b) { return b.matchScore - a.matchScore; });
 
-  const renderRole = (role: any, idx: number) =>
-    createElement(
+  const considerRoles = results.roles
+    .filter(function (r) { return r.category === "consider"; })
+    .sort(function (a, b) { return b.matchScore - a.matchScore; });
+
+  const renderRole = function (role: any, idx: number) {
+    return createElement(
       View,
-      { key: `${role.category}-${idx}`, style: styles.roleCard, wrap: false },
+      { key: role.category + "-" + idx, style: styles.roleCard, wrap: false },
       createElement(Text, { style: styles.roleTitle }, role.title),
       role.whyUnexpected
         ? createElement(Text, { style: styles.unexpectedBox }, "Why this could fit: " + role.whyUnexpected)
@@ -250,14 +245,14 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
       createElement(Text, { style: styles.consultantPara }, role.consultantParagraph),
 
       createElement(Text, { style: styles.fieldLabel }, "What you bring"),
-      ...role.yourStrengths.map((s: string, i: number) =>
-        createElement(Text, { key: `s-${i}`, style: styles.bulletItem }, "• " + s)
-      ),
+      ...role.yourStrengths.map(function (s: string, i: number) {
+        return createElement(Text, { key: "s-" + i, style: styles.bulletItem }, "- " + s);
+      }),
 
       createElement(Text, { style: styles.fieldLabel }, "What to develop"),
-      ...role.developmentGaps.map((g: string, i: number) =>
-        createElement(Text, { key: `g-${i}`, style: styles.bulletItem }, "• " + g)
-      ),
+      ...role.developmentGaps.map(function (g: string, i: number) {
+        return createElement(Text, { key: "g-" + i, style: styles.bulletItem }, "- " + g);
+      }),
 
       createElement(Text, { style: styles.fieldLabel }, "Suggested next step"),
       createElement(Text, { style: styles.nextStep }, role.nextStep),
@@ -265,7 +260,7 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
       createElement(
         View,
         { style: styles.salaryRow },
-        ...["entry", "established", "senior"].map((tier) => {
+        ...["entry", "established", "senior"].map(function (tier) {
           const isActive = role.salary.startingTier === tier;
           const tierStyle = isActive ? styles.salaryTierActive : styles.salaryTier;
           const labelStyle = isActive ? styles.salaryTierLabelActive : styles.salaryTierLabel;
@@ -279,24 +274,33 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
         })
       )
     );
+  };
 
-  const renderCategorySection = (category: "pivot" | "stretch" | "strong") => {
-    const roles = groupedRoles[category];
-    if (roles.length === 0) return null;
-
+  const renderRecommended = function () {
+    if (recommendedRoles.length === 0) return null;
     return createElement(
       View,
-      { key: category },
-      createElement(Text, { style: styles.categoryHeader }, CATEGORY_LABELS[category]),
-      createElement(Text, { style: styles.categoryDescription }, CATEGORY_DESCRIPTIONS[category]),
-      ...roles.map((role, idx) => renderRole(role, idx))
+      { key: "recommended" },
+      createElement(Text, { style: styles.categoryHeader }, RECOMMENDED_LABEL),
+      createElement(Text, { style: styles.categoryDescription }, RECOMMENDED_DESCRIPTION),
+      ...recommendedRoles.map(function (role, idx) { return renderRole(role, idx); })
+    );
+  };
+
+  const renderConsider = function () {
+    if (considerRoles.length === 0) return null;
+    return createElement(
+      View,
+      { key: "consider" },
+      createElement(Text, { style: styles.categoryHeader }, CONSIDER_LABEL),
+      createElement(Text, { style: styles.categoryDescription }, CONSIDER_DESCRIPTION),
+      ...considerRoles.map(function (role, idx) { return renderRole(role, idx); })
     );
   };
 
   return createElement(
     Document,
     {},
-    // Cover page
     createElement(
       Page,
       { size: "A4", style: styles.page },
@@ -313,7 +317,6 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
       )
     ),
 
-    // Summary + roles
     createElement(
       Page,
       { size: "A4", style: styles.page },
@@ -324,9 +327,8 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
         createElement(Text, { style: styles.summaryText }, results.summary)
       ),
       createElement(Text, { style: styles.sectionHeader }, "Your role recommendations"),
-      renderCategorySection("pivot"),
-      renderCategorySection("stretch"),
-      renderCategorySection("strong"),
+      renderRecommended(),
+      renderConsider(),
       createElement(
         Text,
         { style: styles.caveat },
@@ -378,7 +380,7 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="RoleMatch_${safeName}.pdf"`,
+        "Content-Disposition": "attachment; filename=\"RoleMatch_" + safeName + ".pdf\"",
       },
     });
   } catch (e: any) {
