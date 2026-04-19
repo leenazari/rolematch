@@ -4,12 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CVData, Message, ResultsData, RoleMatch } from "@/types";
 
-const PIVOT_TITLE = "Roles you might not have considered";
-const PIVOT_BLURB = "Lateral moves into different sectors where your skills transfer in unexpected ways.";
-const STRETCH_TITLE = "Roles worth growing into";
-const STRETCH_BLURB = "Slightly above your current level or in adjacent sectors. Realistic with some growth.";
-const STRONG_TITLE = "Roles you could walk into";
-const STRONG_BLURB = "Direct fits based on your experience and what you told us you want.";
+const RECOMMENDED_TITLE = "Recommended";
+const RECOMMENDED_BLURB = "Roles where your experience and what you told us point clearly. Ordered by best fit.";
+const CONSIDER_TITLE = "Have you thought about...";
+const CONSIDER_BLURB = "Less obvious moves where your skills genuinely transfer in unexpected ways. Worth considering even if they're outside your usual world.";
 
 const SALARY_TIERS = ["entry", "established", "senior"];
 
@@ -25,13 +23,13 @@ type RoleCardProps = {
 
 function RoleCard(props: RoleCardProps) {
   const role = props.role;
-  const isPivot = role.category === "pivot";
+  const isConsider = role.category === "consider";
 
   return (
     <div className="bg-white rounded-2xl p-6 md:p-7 border border-slate-200 shadow-sm">
       <h3 className="text-2xl font-bold text-slate-900 mb-3">{role.title}</h3>
 
-      {isPivot && role.whyUnexpected ? (
+      {isConsider && role.whyUnexpected ? (
         <div className="bg-purple-50 border-l-4 border-purple-400 rounded-r-lg px-4 py-3 mb-4">
           <p className="text-sm text-purple-900">
             <span className="font-semibold">Why this could fit: </span>
@@ -225,9 +223,29 @@ export default function ResultsPage() {
         <div className="text-center max-w-md">
           <h1 className="text-2xl font-bold text-slate-900 mb-4">Something went wrong</h1>
           <p className="text-slate-600 mb-6">{error}</p>
-          <button onClick={function () { router.push("/"); }} className="text-indigo-600 underline">
-            Start over
-          </button>
+          <p className="text-sm text-slate-500 mb-6">Your conversation is saved. You don't need to redo it.</p>
+          <div className="flex flex-col gap-3 items-center">
+            <button
+              onClick={function () {
+                setError("");
+                const cvStr = sessionStorage.getItem("rolematch_cv");
+                const convStr = sessionStorage.getItem("rolematch_conversation");
+                if (cvStr && convStr) {
+                  const cv = JSON.parse(cvStr);
+                  const conv = JSON.parse(convStr);
+                  generateResults(cv, conv);
+                } else {
+                  router.push("/");
+                }
+              }}
+              className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium"
+            >
+              Try generating results again
+            </button>
+            <button onClick={function () { router.push("/"); }} className="text-sm text-slate-500 hover:text-slate-700 underline">
+              Start completely over
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -245,9 +263,13 @@ export default function ResultsPage() {
     );
   }
 
-  const pivotRoles = results.roles.filter(function (r) { return r.category === "pivot"; });
-  const stretchRoles = results.roles.filter(function (r) { return r.category === "stretch"; });
-  const strongRoles = results.roles.filter(function (r) { return r.category === "strong"; });
+  const recommendedRoles = results.roles
+    .filter(function (r) { return r.category === "recommended"; })
+    .sort(function (a, b) { return b.matchScore - a.matchScore; });
+
+  const considerRoles = results.roles
+    .filter(function (r) { return r.category === "consider"; })
+    .sort(function (a, b) { return b.matchScore - a.matchScore; });
 
   const interviewaUrl = "https://interviewa.com";
 
@@ -285,9 +307,8 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        <RoleSection title={PIVOT_TITLE} blurb={PIVOT_BLURB} roles={pivotRoles} />
-        <RoleSection title={STRETCH_TITLE} blurb={STRETCH_BLURB} roles={stretchRoles} />
-        <RoleSection title={STRONG_TITLE} blurb={STRONG_BLURB} roles={strongRoles} />
+        <RoleSection title={RECOMMENDED_TITLE} blurb={RECOMMENDED_BLURB} roles={recommendedRoles} />
+        <RoleSection title={CONSIDER_TITLE} blurb={CONSIDER_BLURB} roles={considerRoles} />
 
         <p className="text-xs text-slate-400 italic text-center mt-8 max-w-2xl mx-auto">
           Salary ranges are estimates based on UK averages and can vary by region, employer, and your specific background. Use them as a guide, not a guarantee.
