@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     const msg = await anthropic.messages.create({
       model: SONNET,
-      max_tokens: 8000,
+      max_tokens: 6000,
       system: RESULTS_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });
