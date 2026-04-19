@@ -204,13 +204,13 @@ export default function ResultsPage() {
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
+      const link = document.createElement("a");
+      link.href = url;
       const safeName = cvData.name.replace(/[^a-zA-Z0-9]+/g, "_");
-      a.download = "RoleMatch_" + safeName + ".pdf";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      link.download = "RoleMatch_" + safeName + ".pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (e) {
       setError("PDF download failed. Please try again.");
@@ -248,6 +248,8 @@ export default function ResultsPage() {
   const pivotRoles = results.roles.filter(function (r) { return r.category === "pivot"; });
   const stretchRoles = results.roles.filter(function (r) { return r.category === "stretch"; });
   const strongRoles = results.roles.filter(function (r) { return r.category === "strong"; });
+
+  const interviewaUrl = "https://interviewa.com";
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
@@ -298,14 +300,12 @@ export default function ResultsPage() {
           <p className="text-indigo-100 mb-6 max-w-xl mx-auto">
             RoleMatch is part of Interviewa. Practise real interviews with our AI interviewer, get instant feedback, and walk in confident on the day.
           </p>
-          
-            href="https://interviewa.com"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={function () { window.open(interviewaUrl, "_blank"); }}
             className="inline-block px-8 py-4 bg-white text-indigo-700 rounded-2xl font-semibold hover:bg-indigo-50 shadow-lg"
           >
             Try Interviewa
-          </a>
+          </button>
         </div>
 
         <div className="text-center mt-8">
