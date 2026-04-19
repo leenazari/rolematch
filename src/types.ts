@@ -7,6 +7,8 @@ export type CVData = {
   education: string;
   notableEmployers: string[];
   rawText: string;
+  lovedSkills: string[];
+  avoidSkills: string[];
 };
 
 export type ExtractCVResponse = {
