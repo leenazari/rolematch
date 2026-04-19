@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { CVData } from "@/types";
 
 type Props = {
@@ -8,7 +8,9 @@ type Props = {
   onConfirm: (data: CVData) => void;
   onBack: () => void;
 };
+
 const INTRO_VIDEO_URL = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/rolematch.mp4";
+
 const MIN_LOVED = 3;
 const MAX_LOVED = 5;
 const MAX_AVOID = 3;
@@ -47,6 +49,17 @@ export default function CVConfirm(props: Props) {
     lovedSkills: data.lovedSkills || [],
     avoidSkills: data.avoidSkills || [],
   });
+
+  useEffect(function () {
+    const preload = document.createElement("link");
+    preload.rel = "preload";
+    preload.as = "video";
+    preload.href = INTRO_VIDEO_URL;
+    document.head.appendChild(preload);
+    return function () {
+      if (preload.parentNode) preload.parentNode.removeChild(preload);
+    };
+  }, []);
 
   function update<K extends keyof CVData>(key: K, value: CVData[K]) {
     setEdited({ ...edited, [key]: value });
