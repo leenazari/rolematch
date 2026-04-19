@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
@@ -9,17 +9,16 @@ import type { CVData, Message } from "@/types";
 
 type Phase = "idle" | "ai_speaking" | "listening" | "finalising" | "reviewing" | "thinking";
 
-function buildIntro(firstName: string): string {
-  return (
-    "Hi " + firstName + ". Good to meet you properly. " +
-    "Quick thing before we start. " +
-    "I'm not here to tell you what to do. I'm here to help you figure out what you actually want from your next move. " +
-    "I'll ask you six questions and the more honest you are, the better this works. " +
-    "There's no right answer and nothing gets judged. " +
-    "At the end I'll pull together a few role ideas that fit what you've told me, not just your CV. " +
-    "OK, here's the first one..."
-  );
-}
+const INTRO_VIDEO_URL = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/rolematch.mp4";
+
+const INTRO_TEXT =
+  "Hi there, good to meet you properly. " +
+  "Quick thing before we start. " +
+  "I'm not here to tell you what to do. I'm here to help you figure out what you actually want from your next move. " +
+  "I'll ask you six questions and the more honest you are, the better this works. " +
+  "There's no right answer and nothing gets judged. " +
+  "At the end I'll pull together a few role ideas that fit what you've told me, not just your CV. " +
+  "OK, here's the first one...";
 
 export default function ConversationPage() {
   const router = useRouter();
@@ -32,7 +31,9 @@ export default function ConversationPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [draftAnswer, setDraftAnswer] = useState("");
-  const [introText, setIntroText] = useState("");
+  const [introPlaying, setIntroPlaying] = useState(false);
+  const [videoBuffering, setVideoBuffering] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const { supported: voiceSupported, listening, transcript, interim, start, stop, hardReset } = useSpeechRecognition();
   const { speak, speaking, stopSpeaking } = useSpeechSynthesis();
@@ -59,16 +60,21 @@ export default function ConversationPage() {
   async function startConversation() {
     if (!cvData) return;
     setHasStarted(true);
-
-    const firstName = cvData.name.split(" ")[0];
-    const intro = buildIntro(firstName);
-    setIntroText(intro);
+    setIntroPlaying(true);
     setPhase("ai_speaking");
+    // Video playback handled by the <video> element; handleIntroEnd fires on completion
+  }
 
-    speak(intro, function () {
-      setIntroText("");
-      fetchNextQuestion([], 1, 0, false);
-    });
+  function handleIntroEnd() {
+    setIntroPlaying(false);
+    fetchNextQuestion([], 1, 0, false);
+  }
+
+  function handleSkipIntro() {
+    if (videoRef.current) {
+      try { videoRef.current.pause(); } catch (e) {}
+    }
+    handleIntroEnd();
   }
 
   async function fetchNextQuestion(
@@ -192,7 +198,6 @@ export default function ConversationPage() {
 
   const latestAi = [...messages].reverse().find(function (m) { return m.role === "ai"; });
   const reversedMessages = [...messages].reverse();
-  const isPlayingIntro = introText !== "";
 
   const orbState =
     phase === "ai_speaking" ? "speaking" :
@@ -208,7 +213,7 @@ export default function ConversationPage() {
           <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
             RoleMatch
           </div>
-          {!finished && hasStarted && !isPlayingIntro ? (
+          {!finished && hasStarted && !introPlaying ? (
             <p className="text-slate-500 text-sm">Question {currentQuestion} of 6</p>
           ) : null}
         </div>
@@ -236,20 +241,44 @@ export default function ConversationPage() {
           </div>
         ) : (
           <>
-            <div className="mb-10 mt-4">
-              <VoiceOrb state={orbState} />
-            </div>
-
-            {isPlayingIntro ? (
-              <div className="bg-white rounded-3xl p-8 mb-6 border border-slate-200 shadow-sm">
-                <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-3 text-center">
-                  RoleMatch
+            {introPlaying ? (
+              <div className="mb-10 mt-4 max-w-2xl mx-auto relative">
+                <video
+                  ref={videoRef}
+                  src={INTRO_VIDEO_URL}
+                  autoPlay
+                  playsInline
+                  onEnded={handleIntroEnd}
+                  onError={handleIntroEnd}
+                  onWaiting={function () { setVideoBuffering(true); }}
+                  onPlaying={function () { setVideoBuffering(false); }}
+                  onLoadedData={function () { setVideoBuffering(false); }}
+                  className="w-full rounded-3xl shadow-xl shadow-indigo-200 bg-slate-900"
+                />
+                {videoBuffering ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900 bg-opacity-50 rounded-3xl">
+                    <div className="text-white text-sm flex items-center gap-3">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Loading...
+                    </div>
+                  </div>
+                ) : null}
+                <div className="text-center mt-4">
+                  <button
+                    onClick={handleSkipIntro}
+                    className="text-sm text-slate-400 hover:text-slate-600 underline"
+                  >
+                    Skip intro
+                  </button>
                 </div>
-                <p className="text-xl md:text-2xl text-slate-900 leading-relaxed text-center font-medium">
-                  {introText}
-                </p>
               </div>
-            ) : latestAi ? (
+            ) : (
+              <div className="mb-10 mt-4">
+                <VoiceOrb state={orbState} />
+              </div>
+            )}
+
+            {!introPlaying && latestAi ? (
               <div className="bg-white rounded-3xl p-8 mb-6 border border-slate-200 shadow-sm">
                 <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-3 text-center">
                   RoleMatch
@@ -302,78 +331,80 @@ export default function ConversationPage() {
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-3 justify-center">
-              {phase === "ai_speaking" ? (
-                <button
-                  disabled
-                  className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
-                >
-                  {isPlayingIntro ? "Getting ready..." : "Wait for me to finish..."}
-                </button>
-              ) : null}
-
-              {phase === "thinking" ? (
-                <button
-                  disabled
-                  className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
-                >
-                  Thinking about your answer...
-                </button>
-              ) : null}
-
-              {phase === "finalising" ? (
-                <button
-                  disabled
-                  className="px-8 py-4 bg-amber-100 text-amber-700 rounded-2xl font-medium cursor-not-allowed"
-                >
-                  Capturing your last words...
-                </button>
-              ) : null}
-
-              {phase === "idle" && !finished ? (
-                <button
-                  onClick={handleStartListening}
-                  className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200"
-                >
-                  Tap to answer
-                </button>
-              ) : null}
-
-              {phase === "listening" ? (
-                <button
-                  onClick={handleStopListening}
-                  className="px-8 py-4 bg-red-500 text-white rounded-2xl hover:bg-red-600 font-medium shadow-lg shadow-red-200"
-                >
-                  Stop
-                </button>
-              ) : null}
-
-              {phase === "reviewing" ? (
-                <>
+            {!introPlaying ? (
+              <div className="flex flex-wrap gap-3 justify-center">
+                {phase === "ai_speaking" ? (
                   <button
-                    onClick={handleResumeListening}
-                    className="px-6 py-4 bg-white border-2 border-indigo-300 text-indigo-700 rounded-2xl hover:bg-indigo-50 font-medium"
+                    disabled
+                    className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
                   >
-                    Add more
+                    Wait for me to finish...
                   </button>
-                  <button
-                    onClick={handleClearAndRetry}
-                    className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
-                  >
-                    Try again
-                  </button>
-                  <button
-                    onClick={handleSendAnswer}
-                    disabled={!draftAnswer.trim()}
-                    className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Send my answer
-                  </button>
-                </>
-              ) : null}
-            </div>
+                ) : null}
 
-            {messages.length > 1 ? (
+                {phase === "thinking" ? (
+                  <button
+                    disabled
+                    className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
+                  >
+                    Thinking about your answer...
+                  </button>
+                ) : null}
+
+                {phase === "finalising" ? (
+                  <button
+                    disabled
+                    className="px-8 py-4 bg-amber-100 text-amber-700 rounded-2xl font-medium cursor-not-allowed"
+                  >
+                    Capturing your last words...
+                  </button>
+                ) : null}
+
+                {phase === "idle" && !finished ? (
+                  <button
+                    onClick={handleStartListening}
+                    className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200"
+                  >
+                    Tap to answer
+                  </button>
+                ) : null}
+
+                {phase === "listening" ? (
+                  <button
+                    onClick={handleStopListening}
+                    className="px-8 py-4 bg-red-500 text-white rounded-2xl hover:bg-red-600 font-medium shadow-lg shadow-red-200"
+                  >
+                    Stop
+                  </button>
+                ) : null}
+
+                {phase === "reviewing" ? (
+                  <>
+                    <button
+                      onClick={handleResumeListening}
+                      className="px-6 py-4 bg-white border-2 border-indigo-300 text-indigo-700 rounded-2xl hover:bg-indigo-50 font-medium"
+                    >
+                      Add more
+                    </button>
+                    <button
+                      onClick={handleClearAndRetry}
+                      className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
+                    >
+                      Try again
+                    </button>
+                    <button
+                      onClick={handleSendAnswer}
+                      disabled={!draftAnswer.trim()}
+                      className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Send my answer
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {messages.length > 1 && !introPlaying ? (
               <div className="mt-12 text-center">
                 <details className="text-xs text-slate-400">
                   <summary className="cursor-pointer hover:text-slate-600">Conversation history</summary>
