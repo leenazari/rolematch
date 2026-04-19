@@ -10,8 +10,9 @@ export function useSpeechRecognition() {
   const [error, setError] = useState("");
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef("");
+  const interimRef = useRef("");
 
-  useEffect(() => {
+  useEffect(function () {
     if (typeof window === "undefined") return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
@@ -21,7 +22,7 @@ export function useSpeechRecognition() {
     setSupported(true);
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback(function () {
     if (typeof window === "undefined") return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
@@ -30,11 +31,12 @@ export function useSpeechRecognition() {
     r.interimResults = true;
     r.lang = "en-GB";
     transcriptRef.current = "";
+    interimRef.current = "";
     setTranscript("");
     setInterim("");
     setError("");
 
-    r.onresult = (e: any) => {
+    r.onresult = function (e: any) {
       let finalText = "";
       let interimText = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -46,12 +48,13 @@ export function useSpeechRecognition() {
         transcriptRef.current = (transcriptRef.current + " " + finalText).trim();
         setTranscript(transcriptRef.current);
       }
+      interimRef.current = interimText;
       setInterim(interimText);
     };
-    r.onerror = (e: any) => {
+    r.onerror = function (e: any) {
       setError("Voice error: " + e.error);
     };
-    r.onend = () => {
+    r.onend = function () {
       setListening(false);
     };
 
@@ -60,19 +63,37 @@ export function useSpeechRecognition() {
     setListening(true);
   }, []);
 
-  const stop = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {}
-    }
-    setListening(false);
-    const interimNow = (recognitionRef.current as any)?.interimText || "";
-    const final = transcriptRef.current.trim();
-    return final || interimNow || "";
-  }, []);
+  const stop = useCallback(function () {
+    return new Promise<string>(function (resolve) {
+      if (!recognitionRef.current) {
+        const final = (transcriptRef.current + " " + interimRef.current).trim();
+        setListening(false);
+        resolve(final);
+        return;
+      }
 
-  const hardReset = useCallback(() => {
+      const handleEnd = function () {
+        const final = (transcriptRef.current + " " + interimRef.current).trim();
+        setListening(false);
+        resolve(final);
+      };
+
+      try {
+        recognitionRef.current.onend = handleEnd;
+        recognitionRef.current.stop();
+      } catch (e) {
+        handleEnd();
+      }
+
+      setTimeout(function () {
+        if (listening) {
+          handleEnd();
+        }
+      }, 800);
+    });
+  }, [listening]);
+
+  const hardReset = useCallback(function () {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.abort();
@@ -80,6 +101,7 @@ export function useSpeechRecognition() {
       recognitionRef.current = null;
     }
     transcriptRef.current = "";
+    interimRef.current = "";
     setTranscript("");
     setInterim("");
     setError("");
