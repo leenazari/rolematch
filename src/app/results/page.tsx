@@ -21,6 +21,43 @@ type RoleCardProps = {
   role: RoleMatch;
 };
 
+function scrubDashes(value: any): any {
+  if (typeof value === "string") {
+    return value
+      .replace(/[—–―−‒]/g, ", ")
+      .replace(/\s+-\s+/g, ", ")
+      .replace(/,\s*,/g, ",")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrubDashes);
+  }
+  if (value && typeof value === "object") {
+    const out: any = {};
+    for (const k in value) {
+      out[k] = scrubDashes(value[k]);
+    }
+    return out;
+  }
+  return value;
+}
+
+function formatTimestamp(iso: string): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const day = d.getDate();
+    const month = d.toLocaleDateString("en-GB", { month: "long" });
+    const year = d.getFullYear();
+    const hours = d.getHours().toString().padStart(2, "0");
+    const minutes = d.getMinutes().toString().padStart(2, "0");
+    return day + " " + month + " " + year + ", " + hours + ":" + minutes;
+  } catch (e) {
+    return "";
+  }
+}
+
 function RoleCard(props: RoleCardProps) {
   const role = props.role;
   const isConsider = role.category === "consider";
@@ -142,6 +179,7 @@ export default function ResultsPage() {
   const [results, setResults] = useState<ResultsData | null>(null);
   const [error, setError] = useState("");
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [generatedAt, setGeneratedAt] = useState<string>("");
 
   useEffect(function () {
     const cvStr = sessionStorage.getItem("rolematch_cv");
@@ -156,8 +194,10 @@ export default function ResultsPage() {
       setCvData(cv);
 
       const cached = sessionStorage.getItem("rolematch_results");
+      const cachedTime = sessionStorage.getItem("rolematch_generated_at");
       if (cached) {
         setResults(JSON.parse(cached));
+        if (cachedTime) setGeneratedAt(cachedTime);
         return;
       }
 
@@ -179,8 +219,12 @@ export default function ResultsPage() {
         setError(json.error || "Could not generate results.");
         return;
       }
-      setResults(json.data);
-      sessionStorage.setItem("rolematch_results", JSON.stringify(json.data));
+      const cleaned = scrubDashes(json.data);
+      setResults(cleaned);
+      sessionStorage.setItem("rolematch_results", JSON.stringify(cleaned));
+      const now = new Date().toISOString();
+      sessionStorage.setItem("rolematch_generated_at", now);
+      setGeneratedAt(now);
     } catch (e) {
       setError("Something went wrong. Please refresh to try again.");
     }
@@ -193,7 +237,7 @@ export default function ResultsPage() {
       const res = await fetch("/api/generate-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cvData, results }),
+        body: JSON.stringify({ cvData, results, generatedAt }),
       });
       if (!res.ok) {
         setError("PDF download failed. Please try again.");
@@ -313,6 +357,12 @@ export default function ResultsPage() {
         <p className="text-xs text-slate-400 italic text-center mt-8 max-w-2xl mx-auto">
           Salary ranges are estimates based on UK averages and can vary by region, employer, and your specific background. Use them as a guide, not a guarantee.
         </p>
+
+        {generatedAt ? (
+          <p className="text-xs text-slate-400 text-center mt-3">
+            Generated: {formatTimestamp(generatedAt)}
+          </p>
+        ) : null}
 
         <div className="mt-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-3xl p-10 text-center shadow-xl shadow-indigo-200">
           <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
