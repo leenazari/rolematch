@@ -9,6 +9,7 @@ export const maxDuration = 30;
 type Body = {
   cvData: CVData;
   results: ResultsData;
+  generatedAt?: string;
 };
 
 const styles = StyleSheet.create({
@@ -183,6 +184,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: "center",
   },
+  timestampLine: {
+    fontSize: 8,
+    color: "#94a3b8",
+    textAlign: "center",
+    marginTop: 6,
+  },
   ctaBox: {
     marginTop: 30,
     padding: 20,
@@ -219,12 +226,25 @@ const RECOMMENDED_DESCRIPTION = "Roles where your experience and what you told u
 const CONSIDER_LABEL = "Have you thought about...";
 const CONSIDER_DESCRIPTION = "Less obvious moves where your skills genuinely transfer in unexpected ways. Worth considering even if they're outside your usual world.";
 
-function buildPdfDocument(cvData: CVData, results: ResultsData) {
-  const today = new Date().toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+function formatTimestamp(iso: string): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const day = d.getDate();
+    const month = d.toLocaleDateString("en-GB", { month: "long" });
+    const year = d.getFullYear();
+    const hours = d.getHours().toString().padStart(2, "0");
+    const minutes = d.getMinutes().toString().padStart(2, "0");
+    return day + " " + month + " " + year + ", " + hours + ":" + minutes;
+  } catch (e) {
+    return "";
+  }
+}
+
+function buildPdfDocument(cvData: CVData, results: ResultsData, generatedAt: string) {
+  const formattedTimestamp = generatedAt
+    ? formatTimestamp(generatedAt)
+    : formatTimestamp(new Date().toISOString());
 
   const recommendedRoles = results.roles
     .filter(function (r) { return r.category === "recommended"; })
@@ -309,7 +329,7 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
       createElement(Text, { style: styles.coverName }, "Prepared for " + cvData.name),
       createElement(Text, { style: styles.coverMeta }, "Current role: " + cvData.currentRole),
       createElement(Text, { style: styles.coverMeta }, "Sector: " + cvData.sector),
-      createElement(Text, { style: styles.coverMeta }, "Generated: " + today),
+      createElement(Text, { style: styles.coverMeta }, "Generated: " + formattedTimestamp),
       createElement(
         View,
         { style: styles.footer, fixed: true },
@@ -335,6 +355,11 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
         "Salary ranges are estimates based on UK averages and can vary by region, employer, and your specific background. Use them as a guide, not a guarantee."
       ),
       createElement(
+        Text,
+        { style: styles.timestampLine },
+        "Generated: " + formattedTimestamp
+      ),
+      createElement(
         View,
         { style: styles.ctaBox },
         createElement(Text, { style: styles.ctaTitle }, "Ready to practise interviewing for these roles?"),
@@ -356,7 +381,7 @@ function buildPdfDocument(cvData: CVData, results: ResultsData) {
 export async function POST(req: NextRequest) {
   try {
     const body: Body = await req.json();
-    const { cvData, results } = body;
+    const { cvData, results, generatedAt } = body;
 
     if (!cvData || !results) {
       return new Response(JSON.stringify({ ok: false, error: "Missing required fields" }), {
@@ -365,7 +390,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const doc = buildPdfDocument(cvData, results);
+    const doc = buildPdfDocument(cvData, results, generatedAt || "");
     const stream = await renderToStream(doc as any);
 
     const chunks: Buffer[] = [];
