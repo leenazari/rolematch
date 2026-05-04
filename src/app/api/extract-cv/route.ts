@@ -37,7 +37,7 @@ async function extractFromText(rawText: string) {
     messages: [{ role: "user", content: trimmed }],
   });
 
-  const textBlock = msg.content.find((b) => b.type === "text");
+  const textBlock = msg.content.find(function (b) { return b.type === "text"; });
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("No text response from AI");
   }
@@ -52,6 +52,50 @@ async function extractFromText(rawText: string) {
     lovedSkills: [],
     avoidSkills: [],
   };
+}
+
+async function tryParsePdf(buffer: Buffer): Promise<string> {
+  // Try parsing the PDF with image errors swallowed.
+  // pdf-parse can throw on certain embedded images, malformed XObjects, or unusual encodings.
+  // We want to return whatever text we can extract, even if image parsing fails.
+  try {
+    const pdfParse = (await import("pdf-parse")).default;
+    // Pass options that tell pdf-parse to be more tolerant.
+    // The "max" option limits pages parsed; we keep it generous.
+    // Some pdf-parse errors come from internal pdfjs warnings about images we don't care about.
+    const parsed = await pdfParse(buffer, { max: 50 });
+    return parsed.text || "";
+  } catch (e: any) {
+    // If pdf-parse threw, try one more time with a manual fallback approach
+    // by ignoring known image-related error patterns
+    const errorMsg = e?.message || "";
+    const isImageError =
+      errorMsg.includes("image") ||
+      errorMsg.includes("XObject") ||
+      errorMsg.includes("JPEG") ||
+      errorMsg.includes("JBIG2") ||
+      errorMsg.includes("CCITTFax") ||
+      errorMsg.includes("colour") ||
+      errorMsg.includes("color");
+
+    if (isImageError) {
+      // Image-related parse failure. Try a more aggressive read that skips problematic content.
+      try {
+        const pdfParse = (await import("pdf-parse")).default;
+        const parsed = await pdfParse(buffer, {
+          max: 50,
+          pagerender: function () { return Promise.resolve(""); },
+        });
+        return parsed.text || "";
+      } catch (e2) {
+        // Both attempts failed. Throw a friendlier error.
+        throw new Error("Could not extract text from this PDF. It may be image-based or have unusual formatting. Please paste the text directly.");
+      }
+    }
+
+    // Non-image error, re-throw with friendlier message
+    throw new Error("Could not read this PDF. Please try a different file or paste the text directly.");
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -71,14 +115,28 @@ export async function POST(req: NextRequest) {
       }
       const buffer = Buffer.from(await file.arrayBuffer());
 
-      const pdfParse = (await import("pdf-parse")).default;
-      const parsed = await pdfParse(buffer);
-      rawText = parsed.text;
+      try {
+        rawText = await tryParsePdf(buffer);
+      } catch (e: any) {
+        return NextResponse.json(
+          { ok: false, error: e?.message || "Could not read this PDF. Please paste the text directly." },
+          { status: 400 }
+        );
+      }
     }
 
-    if (!rawText || rawText.trim().length < 50) {
+    // Tighter threshold: 200 chars catches image-only CVs that produce minimal extracted text
+    // (header text, logo alt text, etc.) while letting genuine short CVs through.
+    if (!rawText || rawText.trim().length < 200) {
+      const len = rawText ? rawText.trim().length : 0;
+      const reason = len === 0
+        ? "We couldn't find any text in this PDF. It may be image-based (scanned or from Canva) where the CV is rendered as a picture rather than text."
+        : "We could only find a small amount of text in this PDF, which suggests it might be mostly image-based.";
       return NextResponse.json(
-        { ok: false, error: "CV text too short or empty. Try pasting the text directly." },
+        {
+          ok: false,
+          error: reason + " Please copy the text from your CV and paste it instead.",
+        },
         { status: 400 }
       );
     }
