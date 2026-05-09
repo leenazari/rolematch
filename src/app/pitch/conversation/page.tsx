@@ -113,7 +113,6 @@ export default function PitchConversationPage() {
   function handleStartListening() {
     if (speaking) stopSpeaking();
     hardReset();
-    setDraftAnswer("");
     setTimeout(function () {
       start();
       setPhase("listening");
@@ -188,6 +187,18 @@ export default function PitchConversationPage() {
     phase === "finalising" ? "thinking" :
     "idle";
 
+  // What to show in the answer textarea (combines draft + live voice transcript while listening)
+  const liveAnswerText = (function () {
+    if (phase === "listening") {
+      const parts: string[] = [];
+      if (draftAnswer) parts.push(draftAnswer);
+      if (transcript) parts.push(transcript);
+      const base = parts.join(" ").trim();
+      return base + (interim ? (base ? " " : "") + interim : "");
+    }
+    return draftAnswer;
+  })();
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
       <div className="max-w-3xl mx-auto">
@@ -212,7 +223,7 @@ export default function PitchConversationPage() {
               I'll ask six questions about the business. The conversation is friendly. The honest written feedback comes after.
             </p>
             <p className="text-slate-500 text-sm mb-8">
-              Speak naturally. Specifics beat buzzwords every time.
+              Speak naturally. You can also edit your answer before sending.
             </p>
             <button
               onClick={startConversation}
@@ -238,16 +249,16 @@ export default function PitchConversationPage() {
               </div>
             ) : null}
 
-            {(phase === "listening" || phase === "finalising" || phase === "reviewing") ? (
+            {(phase === "listening" || phase === "finalising" || phase === "reviewing" || (phase === "idle" && draftAnswer)) ? (
               <div className={
-                phase === "reviewing"
-                  ? "bg-white border-2 border-slate-200 rounded-2xl p-6 mb-6"
-                  : "bg-purple-50 border-2 border-purple-200 rounded-2xl p-6 mb-6"
+                phase === "listening"
+                  ? "bg-purple-50 border-2 border-purple-200 rounded-2xl p-6 mb-6"
+                  : "bg-white border-2 border-slate-200 rounded-2xl p-6 mb-6"
               }>
                 <div className={
-                  phase === "reviewing"
-                    ? "text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2"
-                    : "text-xs font-semibold uppercase tracking-wider text-purple-700 mb-2 flex items-center gap-2"
+                  phase === "listening"
+                    ? "text-xs font-semibold uppercase tracking-wider text-purple-700 mb-2 flex items-center gap-2"
+                    : "text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2"
                 }>
                   {phase === "listening" ? (
                     <>
@@ -260,23 +271,17 @@ export default function PitchConversationPage() {
                       Finalising your answer...
                     </>
                   ) : (
-                    <>Your answer</>
+                    <>Your answer (edit if needed)</>
                   )}
                 </div>
-                <p className="text-lg text-slate-900 leading-relaxed min-h-[2rem]">
-                  {phase === "reviewing" ? (
-                    draftAnswer ? draftAnswer : <span className="text-slate-400 italic">Nothing captured. Try again.</span>
-                  ) : (
-                    <>
-                      {draftAnswer ? <span>{draftAnswer} </span> : null}
-                      {transcript ? <span>{transcript} </span> : null}
-                      <span className="text-slate-500 italic">{interim}</span>
-                      {!draftAnswer && !transcript && !interim ? (
-                        <span className="text-slate-400 italic">Start speaking...</span>
-                      ) : null}
-                    </>
-                  )}
-                </p>
+                <textarea
+                  value={liveAnswerText}
+                  readOnly={phase === "listening" || phase === "finalising"}
+                  onChange={function (e) { setDraftAnswer(e.target.value); }}
+                  placeholder={phase === "listening" ? "Speak your answer..." : "Type your answer here, or use Add more to dictate."}
+                  className="w-full p-3 text-base text-slate-900 leading-relaxed border border-slate-200 rounded-lg focus:border-purple-400 focus:outline-none resize-none min-h-[120px] bg-white"
+                  rows={5}
+                />
               </div>
             ) : null}
 
@@ -308,13 +313,37 @@ export default function PitchConversationPage() {
                 </button>
               ) : null}
 
-              {phase === "idle" && !finished ? (
+              {phase === "idle" && !finished && !draftAnswer ? (
                 <button
                   onClick={handleStartListening}
                   className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200"
                 >
                   Tap to answer
                 </button>
+              ) : null}
+
+              {phase === "idle" && !finished && draftAnswer ? (
+                <>
+                  <button
+                    onClick={handleResumeListening}
+                    className="px-6 py-4 bg-white border-2 border-purple-300 text-purple-700 rounded-2xl hover:bg-purple-50 font-medium"
+                  >
+                    Add more
+                  </button>
+                  <button
+                    onClick={handleClearAndRetry}
+                    className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    onClick={handleSendAnswer}
+                    disabled={!draftAnswer.trim()}
+                    className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Send my answer
+                  </button>
+                </>
               ) : null}
 
               {phase === "listening" ? (
@@ -338,7 +367,7 @@ export default function PitchConversationPage() {
                     onClick={handleClearAndRetry}
                     className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
                   >
-                    Try again
+                    Clear
                   </button>
                   <button
                     onClick={handleSendAnswer}
