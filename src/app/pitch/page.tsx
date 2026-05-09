@@ -1,31 +1,71 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PitchUpload from "@/components/PitchUpload";
+import PitchConfirm from "@/components/PitchConfirm";
+import type { PitchData } from "@/types";
+
+type Stage = "welcome" | "confirm";
 
 export default function PitchPage() {
   const router = useRouter();
+  const [stage, setStage] = useState<Stage>("welcome");
+  const [pitchData, setPitchData] = useState<PitchData | null>(null);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-16 flex items-center justify-center">
-      <div className="max-w-xl text-center">
-        <div className="text-sm font-semibold text-purple-600 mb-3 tracking-widest uppercase">
-          Pitch Perfect
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-12">
+          <div className="text-sm font-semibold text-purple-600 mb-3 tracking-widest uppercase">
+            Pitch Perfect
+          </div>
+          {stage === "welcome" && (
+            <>
+              <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight leading-tight">
+                Pitch your business to an AI investor.
+              </h1>
+              <p className="text-lg text-slate-600 mb-2 max-w-xl mx-auto">
+                Upload your one-pager, have a friendly conversation about your seed-stage business, then get an honest written breakdown.
+              </p>
+              <p className="text-xs text-slate-400 mb-10">
+                We use your pitch only for this session. No account needed.
+              </p>
+            </>
+          )}
         </div>
-        <h1 className="text-4xl font-bold text-slate-900 mb-4">
-          Coming together now
-        </h1>
-        <p className="text-slate-600 mb-2">
-          Pitch Perfect is being built. The AI investor sparring partner for seed-stage founders.
-        </p>
-        <p className="text-sm text-slate-500 mb-10">
-          Upload your one-pager, get a friendly first-call experience, then receive honest written feedback on both your pitch and your business.
-        </p>
-        <button
-          onClick={() => router.push("/")}
-          className="px-6 py-3 bg-white border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-medium"
-        >
-          Back to home
-        </button>
+
+        {stage === "welcome" && (
+          <PitchUpload
+            onExtracted={(data) => {
+              setPitchData(data);
+              setStage("confirm");
+            }}
+          />
+        )}
+
+        {stage === "confirm" && pitchData && (
+          <PitchConfirm
+            data={pitchData}
+            onConfirm={(finalData) => {
+              sessionStorage.setItem("pitchperfect_data", JSON.stringify(finalData));
+              router.push("/pitch/conversation");
+            }}
+            onBack={() => {
+              setPitchData(null);
+              setStage("welcome");
+            }}
+          />
+        )}
+
+        <div className="text-center mt-12">
+          <button
+            onClick={() => router.push("/")}
+            className="text-sm text-slate-400 hover:text-slate-600 underline"
+          >
+            Back to home
+          </button>
+        </div>
       </div>
     </main>
   );
