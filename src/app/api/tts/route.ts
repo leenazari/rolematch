@@ -1,16 +1,16 @@
-
 import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const VOICE_ID = "QMSGabqYzk8YAneQYYvR";
+const DEFAULT_VOICE_ID = "QMSGabqYzk8YAneQYYvR";
 const MODEL_ID = "eleven_turbo_v2_5";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const text: string = (body.text || "").trim();
+    const voiceId: string = (body.voiceId || DEFAULT_VOICE_ID).trim();
 
     if (!text) {
       return new Response(JSON.stringify({ ok: false, error: "Missing text" }), {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const elevenUrl = "https://api.elevenlabs.io/v1/text-to-speech/" + VOICE_ID + "/stream";
+    const elevenUrl = "https://api.elevenlabs.io/v1/text-to-speech/" + voiceId + "/stream";
 
     const elevenRes = await fetch(elevenUrl, {
       method: "POST",
@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         text,
         model_id: MODEL_ID,
-         voice_settings: {
-          stability: 0.25,
+        voice_settings: {
+          stability: 0.5,
           similarity_boost: 0.75,
           style: 0.25,
           use_speaker_boost: true,
