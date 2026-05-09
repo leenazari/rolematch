@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import PitchUpload from "@/components/PitchUpload";
 import PitchConfirm from "@/components/PitchConfirm";
 import type { PitchData, PitchMessage } from "@/types";
@@ -74,16 +74,18 @@ const TEST_CONVERSATION_WEAK: PitchMessage[] = [
 
 export default function PitchPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [stage, setStage] = useState<Stage>("welcome");
   const [pitchData, setPitchData] = useState<PitchData | null>(null);
   const [testMode, setTestMode] = useState(false);
 
   useEffect(function () {
-    if (searchParams.get("test") === "true") {
-      setTestMode(true);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("test") === "true") {
+        setTestMode(true);
+      }
     }
-  }, [searchParams]);
+  }, []);
 
   function loadTestPreset(preset: "tilly" | "weak") {
     const data = preset === "tilly" ? TEST_PITCH_TILLY : TEST_PITCH_WEAK;
