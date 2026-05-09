@@ -11,41 +11,11 @@ export type CVData = {
   avoidSkills: string[];
 };
 
-export type ExtractCVResponse = {
-  ok: boolean;
-  data?: CVData;
-  error?: string;
-};
-
 export type Message = {
   role: "ai" | "user";
   text: string;
   questionNumber?: number;
-};
-
-export type ConversationState = {
-  messages: Message[];
-  currentQuestion: number;
-  followUpsThisQuestion: number;
-  finished: boolean;
-  coachingUsed: boolean;
-};
-
-export type NextQuestionResponse = {
-  ok: boolean;
-  text?: string;
-  questionNumber?: number;
-  followUpsThisQuestion?: number;
-  finished?: boolean;
-  coachingUsed?: boolean;
-  error?: string;
-};
-
-export type SalaryTiers = {
-  entry: string;
-  established: string;
-  senior: string;
-  startingTier: "entry" | "established" | "senior";
+  isGoldenThreadProbe?: boolean;
 };
 
 export type RoleMatch = {
@@ -57,7 +27,12 @@ export type RoleMatch = {
   yourStrengths: string[];
   developmentGaps: string[];
   nextStep: string;
-  salary: SalaryTiers;
+  salary: {
+    entry: string;
+    established: string;
+    senior: string;
+    startingTier: "entry" | "established" | "senior";
+  };
 };
 
 export type ResultsData = {
@@ -65,8 +40,45 @@ export type ResultsData = {
   roles: RoleMatch[];
 };
 
-export type GenerateResultsResponse = {
+export type NextQuestionResponse = {
   ok: boolean;
-  data?: ResultsData;
+  text?: string;
+  questionNumber?: number;
+  followUpsThisQuestion?: number;
+  finished?: boolean;
+  coachingUsed?: boolean;
+  isGoldenThreadProbe?: boolean;
   error?: string;
+};
+
+export type PitchData = {
+  companyName: string;
+  oneLineDescription: string;
+  problem: string;
+  targetCustomer: string;
+  sector: string;
+  stage: string;
+  teamSize: string;
+  founderBackground: string;
+  traction: string;
+  ask: string;
+  rawText: string;
+};
+
+export type PitchMessage = {
+  role: "ai" | "user";
+  text: string;
+  questionNumber?: number;
+  isFollowUpProbe?: boolean;
+};
+
+export type PitchCritique = {
+  verdict: string;
+  strong: string[];
+  weak: string[];
+  fatalFlaw: string | null;
+  sectorConcerns: string[];
+  revisedPitch: string;
+  thirtyDayActions: string[];
+  vcQuestions: { question: string; prepGuidance: string }[];
 };
