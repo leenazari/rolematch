@@ -81,4 +81,5 @@ export type PitchCritique = {
   revisedPitch: string;
   thirtyDayActions: string[];
   vcQuestions: { question: string; prepGuidance: string }[];
+  glossary: { term: string; definition: string }[];
 };
