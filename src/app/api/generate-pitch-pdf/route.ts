@@ -18,6 +18,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "Helvetica",
     color: "#1e293b",
+    paddingBottom: 70,
   },
   coverTitle: {
     fontSize: 36,
@@ -137,29 +138,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ddd6fe",
   },
-  revisedLabel: {
-    fontSize: 9,
-    fontWeight: "bold",
-    color: "#7c3aed",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
   revisedText: {
     fontSize: 11,
     color: "#1e293b",
     lineHeight: 1.6,
     fontStyle: "italic",
   },
-  actionsBox: {
-    marginBottom: 16,
-  },
   actionItem: {
     flexDirection: "row",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   actionNumber: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "bold",
     color: "#7c3aed",
     width: 20,
@@ -170,21 +160,53 @@ const styles = StyleSheet.create({
     color: "#334155",
     lineHeight: 1.5,
   },
-  questionBox: {
-    borderLeftWidth: 2,
-    borderLeftColor: "#c4b5fd",
-    paddingLeft: 10,
-    marginBottom: 12,
+  questionBlock: {
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
   },
-  questionText: {
-    fontSize: 10,
+  questionLabel: {
+    fontSize: 8,
     fontWeight: "bold",
-    color: "#0f172a",
+    color: "#7c3aed",
+    textTransform: "uppercase",
+    letterSpacing: 1,
     marginBottom: 3,
   },
-  questionGuidance: {
+  questionText: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: "#0f172a",
+    marginBottom: 5,
+    lineHeight: 1.4,
+  },
+  prepLabel: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 2,
+    marginTop: 3,
+  },
+  prepText: {
     fontSize: 9,
     color: "#64748b",
+    lineHeight: 1.4,
+    fontStyle: "italic",
+  },
+  glossaryItem: {
+    marginBottom: 8,
+  },
+  glossaryTerm: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#7c3aed",
+  },
+  glossaryDef: {
+    fontSize: 10,
+    color: "#475569",
     lineHeight: 1.4,
   },
   timestampLine: {
@@ -223,6 +245,14 @@ function buildPdfDocument(pitchData: PitchData, critique: PitchCritique, generat
   const formattedTimestamp = generatedAt
     ? formatTimestamp(generatedAt)
     : formatTimestamp(new Date().toISOString());
+
+  const renderFooter = function () {
+    return createElement(
+      View,
+      { style: styles.footer, fixed: true },
+      createElement(Text, { render: function (data: any) { return "Pitch Perfect  |  page " + data.pageNumber + " of " + data.totalPages; } })
+    );
+  };
 
   const renderStrong = function () {
     return createElement(
@@ -276,7 +306,7 @@ function buildPdfDocument(pitchData: PitchData, critique: PitchCritique, generat
     return critique.thirtyDayActions.map(function (item: string, i: number) {
       return createElement(
         View,
-        { key: "action-" + i, style: styles.actionItem },
+        { key: "action-" + i, style: styles.actionItem, wrap: false },
         createElement(Text, { style: styles.actionNumber }, (i + 1) + "."),
         createElement(Text, { style: styles.actionText }, item)
       );
@@ -287,16 +317,42 @@ function buildPdfDocument(pitchData: PitchData, critique: PitchCritique, generat
     return critique.vcQuestions.map(function (q: any, i: number) {
       return createElement(
         View,
-        { key: "vc-" + i, style: styles.questionBox, wrap: false },
+        { key: "vc-" + i, style: styles.questionBlock, wrap: false },
+        createElement(Text, { style: styles.questionLabel }, "Question " + (i + 1)),
         createElement(Text, { style: styles.questionText }, q.question),
-        createElement(Text, { style: styles.questionGuidance }, q.prepGuidance)
+        createElement(Text, { style: styles.prepLabel }, "How to prep"),
+        createElement(Text, { style: styles.prepText }, q.prepGuidance)
       );
     });
   };
 
-  return createElement(
-    Document,
-    {},
+  const renderGlossary = function () {
+    if (!critique.glossary || critique.glossary.length === 0) return null;
+    return createElement(
+      Page,
+      { size: "A4", style: styles.page, key: "glossary" },
+      createElement(Text, { style: styles.sectionHeader }, "Glossary"),
+      createElement(Text, { style: { fontSize: 10, color: "#64748b", marginBottom: 16, fontStyle: "italic" } }, "Quick definitions of the terms used in this critique."),
+      ...critique.glossary.map(function (g: any, i: number) {
+        return createElement(
+          View,
+          { key: "g-" + i, style: styles.glossaryItem, wrap: false },
+          createElement(Text, {},
+            createElement(Text, { style: styles.glossaryTerm }, g.term + ": "),
+            createElement(Text, { style: styles.glossaryDef }, g.definition)
+          )
+        );
+      }),
+      createElement(
+        Text,
+        { style: styles.timestampLine },
+        "Generated: " + formattedTimestamp
+      ),
+      renderFooter()
+    );
+  };
+
+  const pages = [
     createElement(
       Page,
       { size: "A4", style: styles.page, key: "cover" },
@@ -308,17 +364,13 @@ function buildPdfDocument(pitchData: PitchData, critique: PitchCritique, generat
       createElement(Text, { style: styles.coverMeta }, "Stage: " + pitchData.stage),
       createElement(Text, { style: styles.coverMeta }, "Ask: " + pitchData.ask),
       createElement(Text, { style: styles.coverMeta }, "Generated: " + formattedTimestamp),
-      createElement(
-        View,
-        { style: styles.footer, fixed: true },
-        createElement(Text, {}, "Pitch Perfect  |  page 1")
-      )
+      renderFooter()
     ),
 
     createElement(
       Page,
       { size: "A4", style: styles.page, key: "main" },
-      createElement(Text, { style: styles.sectionHeader }, "Verdict"),
+      createElement(Text, { style: styles.sectionHeader }, "The verdict"),
       createElement(
         View,
         { style: styles.verdictBox },
@@ -337,42 +389,34 @@ function buildPdfDocument(pitchData: PitchData, critique: PitchCritique, generat
 
       renderSectorConcerns(),
 
-      createElement(Text, { style: styles.sectionHeader }, "How I would tell this story"),
+      createElement(Text, { style: styles.sectionHeader }, "How I'd tell this story"),
       createElement(
         View,
         { style: styles.revisedBox },
-        createElement(Text, { style: styles.revisedLabel }, "Revised pitch"),
         createElement(Text, { style: styles.revisedText }, '"' + critique.revisedPitch + '"')
       ),
 
-      createElement(
-        View,
-        { style: styles.footer, fixed: true },
-        createElement(Text, {}, "Pitch Perfect  |  page 2")
-      )
+      renderFooter()
     ),
 
     createElement(
       Page,
       { size: "A4", style: styles.page, key: "actions" },
-      createElement(Text, { style: styles.sectionHeader }, "Next 30 days"),
-      createElement(View, { style: styles.actionsBox }, ...renderActions()),
+      createElement(Text, { style: styles.sectionHeader }, "Your next 30 days"),
+      createElement(View, { style: { marginBottom: 20 } }, ...renderActions()),
 
       createElement(Text, { style: styles.sectionHeader }, "Questions a real VC will ask"),
+      createElement(Text, { style: { fontSize: 10, color: "#64748b", marginBottom: 12, fontStyle: "italic" } }, "Have an answer ready for each of these before your next investor call."),
       createElement(View, {}, ...renderVcQuestions()),
 
-      createElement(
-        Text,
-        { style: styles.timestampLine },
-        "Generated: " + formattedTimestamp
-      ),
-      createElement(
-        View,
-        { style: styles.footer, fixed: true },
-        createElement(Text, {}, "Pitch Perfect  |  page 3")
-      )
-    )
-  );
+      renderFooter()
+    ),
+  ];
+
+  const glossaryPage = renderGlossary();
+  if (glossaryPage) pages.push(glossaryPage);
+
+  return createElement(Document, {}, ...pages);
 }
 
 export async function POST(req: NextRequest) {
