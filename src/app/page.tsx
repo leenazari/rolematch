@@ -1,62 +1,70 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import CVUpload from "@/components/CVUpload";
-import CVConfirm from "@/components/CVConfirm";
-import type { CVData } from "@/types";
-
-type Stage = "welcome" | "confirm";
+import Link from "next/link";
 
 export default function Home() {
-  const router = useRouter();
-  const [stage, setStage] = useState<Stage>("welcome");
-  const [cvData, setCvData] = useState<CVData | null>(null);
-
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-16">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-16">
           <div className="text-sm font-semibold text-indigo-600 mb-3 tracking-widest uppercase">
             RoleMatch
           </div>
-          {stage === "welcome" && (
-            <>
-              <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight leading-tight">
-                Find roles that fit, not just roles that exist.
-              </h1>
-              <p className="text-lg text-slate-600 mb-2 max-w-xl mx-auto">
-                Your AI career coach. Upload your CV, have a quick voice chat, get personalised role suggestions.
-              </p>
-              <p className="text-xs text-slate-400 mb-10">
-                We use your CV only for this session. No account needed.
-              </p>
-            </>
-          )}
+          <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight leading-tight">
+            What are you trying to figure out?
+          </h1>
+          <p className="text-lg text-slate-600 max-w-xl mx-auto">
+            Two AI conversations to help you think clearly about what's next.
+          </p>
         </div>
 
-        {stage === "welcome" && (
-          <CVUpload
-            onExtracted={(data) => {
-              setCvData(data);
-              setStage("confirm");
-            }}
-          />
-        )}
+        <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
 
-        {stage === "confirm" && cvData && (
-          <CVConfirm
-            data={cvData}
-            onConfirm={(finalData) => {
-              sessionStorage.setItem("rolematch_cv", JSON.stringify(finalData));
-              router.push("/conversation");
-            }}
-            onBack={() => {
-              setCvData(null);
-              setStage("welcome");
-            }}
-          />
-        )}
+          <Link href="/career" className="group">
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-100 transition-all h-full flex flex-col">
+              <div className="text-5xl mb-5">🧭</div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-3 group-hover:text-indigo-700">
+                Career Direction
+              </h2>
+              <p className="text-slate-600 mb-6 flex-1">
+                Upload your CV and have a guided conversation about what you actually want from your next move. You'll get five role suggestions including some you haven't thought of.
+              </p>
+              <div className="text-xs text-slate-400 mb-4">
+                Around 10 minutes. Voice-led conversation.
+              </div>
+              <div className="inline-flex items-center text-indigo-600 font-semibold group-hover:gap-3 gap-2 transition-all">
+                Start career conversation
+                <span>→</span>
+              </div>
+            </div>
+          </Link>
+
+          <Link href="/pitch" className="group">
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 hover:border-purple-400 hover:shadow-xl hover:shadow-purple-100 transition-all h-full flex flex-col">
+              <div className="text-5xl mb-5">🎯</div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-3 group-hover:text-purple-700">
+                Pitch Perfect
+              </h2>
+              <p className="text-slate-600 mb-6 flex-1">
+                Upload your one-pager and pitch your seed-stage business to an AI investor. You'll get an honest written breakdown of your pitch and idea afterwards.
+              </p>
+              <div className="text-xs text-slate-400 mb-4">
+                Around 15 minutes. For founders raising seed.
+              </div>
+              <div className="inline-flex items-center text-purple-600 font-semibold group-hover:gap-3 gap-2 transition-all">
+                Start pitch conversation
+                <span>→</span>
+              </div>
+            </div>
+          </Link>
+
+        </div>
+
+        <div className="text-center mt-16">
+          <p className="text-xs text-slate-400">
+            Both work best in Chrome or Edge on desktop or Android.
+          </p>
+        </div>
       </div>
     </main>
   );
