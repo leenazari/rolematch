@@ -205,16 +205,14 @@ export default function PitchConversationPage() {
     phase === "finalising" ? "thinking" :
     "idle";
 
-  const liveAnswerText = (function () {
-    if (phase === "listening") {
-      const parts: string[] = [];
-      if (draftAnswer) parts.push(draftAnswer);
-      if (transcript) parts.push(transcript);
-      const base = parts.join(" ").trim();
-      return base + (interim ? (base ? " " : "") + interim : "");
-    }
-    return draftAnswer;
-  })();
+  let liveAnswerText = draftAnswer;
+  if (phase === "listening") {
+    const parts: string[] = [];
+    if (draftAnswer) parts.push(draftAnswer);
+    if (transcript) parts.push(transcript);
+    const base = parts.join(" ").trim();
+    liveAnswerText = base + (interim ? (base ? " " : "") + interim : "");
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
@@ -351,4 +349,106 @@ export default function PitchConversationPage() {
                     disabled
                     className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
                   >
-                    Thinking
+                    Thinking about your answer...
+                  </button>
+                ) : null}
+
+                {phase === "finalising" ? (
+                  <button
+                    disabled
+                    className="px-8 py-4 bg-amber-100 text-amber-700 rounded-2xl font-medium cursor-not-allowed"
+                  >
+                    Capturing your last words...
+                  </button>
+                ) : null}
+
+                {phase === "idle" && !finished && !draftAnswer ? (
+                  <button
+                    onClick={handleStartListening}
+                    className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200"
+                  >
+                    Tap to answer
+                  </button>
+                ) : null}
+
+                {phase === "idle" && !finished && draftAnswer ? (
+                  <>
+                    <button
+                      onClick={handleResumeListening}
+                      className="px-6 py-4 bg-white border-2 border-purple-300 text-purple-700 rounded-2xl hover:bg-purple-50 font-medium"
+                    >
+                      Add more
+                    </button>
+                    <button
+                      onClick={handleClearAndRetry}
+                      className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={handleSendAnswer}
+                      disabled={!draftAnswer.trim()}
+                      className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Send my answer
+                    </button>
+                  </>
+                ) : null}
+
+                {phase === "listening" ? (
+                  <button
+                    onClick={handleStopListening}
+                    className="px-8 py-4 bg-red-500 text-white rounded-2xl hover:bg-red-600 font-medium shadow-lg shadow-red-200"
+                  >
+                    Stop
+                  </button>
+                ) : null}
+
+                {phase === "reviewing" ? (
+                  <>
+                    <button
+                      onClick={handleResumeListening}
+                      className="px-6 py-4 bg-white border-2 border-purple-300 text-purple-700 rounded-2xl hover:bg-purple-50 font-medium"
+                    >
+                      Add more
+                    </button>
+                    <button
+                      onClick={handleClearAndRetry}
+                      className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={handleSendAnswer}
+                      disabled={!draftAnswer.trim()}
+                      className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Send my answer
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {messages.length > 1 && !introPlaying ? (
+              <div className="mt-12 text-center">
+                <details className="text-xs text-slate-400">
+                  <summary className="cursor-pointer hover:text-slate-600">Conversation history</summary>
+                  <div className="mt-4 text-left space-y-3 max-w-xl mx-auto">
+                    {reversedMessages.map(function (m, i) {
+                      return (
+                        <div key={i} className={m.role === "ai" ? "text-slate-700 text-sm" : "text-purple-700 text-sm"}>
+                          <strong>{m.role === "ai" ? "Investor:" : "You:"}</strong> {m.text}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
