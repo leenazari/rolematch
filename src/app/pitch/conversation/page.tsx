@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { usePitchSpeechSynthesis } from "@/hooks/usePitchSpeechSynthesis";
@@ -8,6 +8,8 @@ import VoiceOrb from "@/components/VoiceOrb";
 import type { PitchData, PitchMessage } from "@/types";
 
 type Phase = "idle" | "ai_speaking" | "listening" | "finalising" | "reviewing" | "thinking";
+
+const INTRO_VIDEO_URL = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/pitchperfect.mp4";
 
 export default function PitchConversationPage() {
   const router = useRouter();
@@ -19,6 +21,9 @@ export default function PitchConversationPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [draftAnswer, setDraftAnswer] = useState("");
+  const [introPlaying, setIntroPlaying] = useState(false);
+  const [videoBuffering, setVideoBuffering] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const { supported: voiceSupported, listening, transcript, interim, start, stop, hardReset } = useSpeechRecognition();
   const { speak, speaking, stopSpeaking } = usePitchSpeechSynthesis();
@@ -48,7 +53,20 @@ export default function PitchConversationPage() {
       sessionStorage.setItem("pitchperfect_started_at", new Date().toISOString());
     }
     setHasStarted(true);
+    setIntroPlaying(true);
+    setPhase("ai_speaking");
+  }
+
+  function handleIntroEnd() {
+    setIntroPlaying(false);
     fetchNextQuestion([], 1, 0);
+  }
+
+  function handleSkipIntro() {
+    if (videoRef.current) {
+      try { videoRef.current.pause(); } catch (e) {}
+    }
+    handleIntroEnd();
   }
 
   async function fetchNextQuestion(
@@ -187,7 +205,6 @@ export default function PitchConversationPage() {
     phase === "finalising" ? "thinking" :
     "idle";
 
-  // What to show in the answer textarea (combines draft + live voice transcript while listening)
   const liveAnswerText = (function () {
     if (phase === "listening") {
       const parts: string[] = [];
@@ -206,7 +223,7 @@ export default function PitchConversationPage() {
           <div className="text-sm font-semibold text-purple-600 mb-3 tracking-widest uppercase">
             Pitch Perfect
           </div>
-          {!finished && hasStarted && currentQuestion <= 6 ? (
+          {!finished && hasStarted && !introPlaying && currentQuestion <= 6 ? (
             <p className="text-slate-500 text-sm">Question {Math.min(currentQuestion, 6)} of 6</p>
           ) : null}
         </div>
@@ -234,11 +251,44 @@ export default function PitchConversationPage() {
           </div>
         ) : (
           <>
-            <div className="mb-10 mt-4">
-              <VoiceOrb state={orbState} />
-            </div>
+            {introPlaying ? (
+              <div className="mb-10 mt-4 max-w-2xl mx-auto relative">
+                <video
+                  ref={videoRef}
+                  src={INTRO_VIDEO_URL}
+                  autoPlay
+                  playsInline
+                  onEnded={handleIntroEnd}
+                  onError={handleIntroEnd}
+                  onWaiting={function () { setVideoBuffering(true); }}
+                  onPlaying={function () { setVideoBuffering(false); }}
+                  onLoadedData={function () { setVideoBuffering(false); }}
+                  className="w-full rounded-3xl shadow-xl shadow-purple-200 bg-slate-900"
+                />
+                {videoBuffering ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900 bg-opacity-50 rounded-3xl">
+                    <div className="text-white text-sm flex items-center gap-3">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Loading...
+                    </div>
+                  </div>
+                ) : null}
+                <div className="text-center mt-4">
+                  <button
+                    onClick={handleSkipIntro}
+                    className="text-sm text-slate-400 hover:text-slate-600 underline"
+                  >
+                    Skip intro
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-10 mt-4">
+                <VoiceOrb state={orbState} />
+              </div>
+            )}
 
-            {latestAi ? (
+            {!introPlaying && latestAi ? (
               <div className="bg-white rounded-3xl p-8 mb-6 border border-slate-200 shadow-sm">
                 <div className="text-xs font-semibold uppercase tracking-wider text-purple-600 mb-3 text-center">
                   Investor
@@ -249,7 +299,7 @@ export default function PitchConversationPage() {
               </div>
             ) : null}
 
-            {(phase === "listening" || phase === "finalising" || phase === "reviewing" || (phase === "idle" && draftAnswer)) ? (
+            {!introPlaying && (phase === "listening" || phase === "finalising" || phase === "reviewing" || (phase === "idle" && draftAnswer)) ? (
               <div className={
                 phase === "listening"
                   ? "bg-purple-50 border-2 border-purple-200 rounded-2xl p-6 mb-6"
@@ -285,120 +335,20 @@ export default function PitchConversationPage() {
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-3 justify-center">
-              {phase === "ai_speaking" ? (
-                <button
-                  disabled
-                  className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
-                >
-                  Wait for me to finish...
-                </button>
-              ) : null}
-
-              {phase === "thinking" ? (
-                <button
-                  disabled
-                  className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
-                >
-                  Thinking about your answer...
-                </button>
-              ) : null}
-
-              {phase === "finalising" ? (
-                <button
-                  disabled
-                  className="px-8 py-4 bg-amber-100 text-amber-700 rounded-2xl font-medium cursor-not-allowed"
-                >
-                  Capturing your last words...
-                </button>
-              ) : null}
-
-              {phase === "idle" && !finished && !draftAnswer ? (
-                <button
-                  onClick={handleStartListening}
-                  className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200"
-                >
-                  Tap to answer
-                </button>
-              ) : null}
-
-              {phase === "idle" && !finished && draftAnswer ? (
-                <>
+            {!introPlaying ? (
+              <div className="flex flex-wrap gap-3 justify-center">
+                {phase === "ai_speaking" ? (
                   <button
-                    onClick={handleResumeListening}
-                    className="px-6 py-4 bg-white border-2 border-purple-300 text-purple-700 rounded-2xl hover:bg-purple-50 font-medium"
+                    disabled
+                    className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
                   >
-                    Add more
+                    Wait for me to finish...
                   </button>
-                  <button
-                    onClick={handleClearAndRetry}
-                    className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    onClick={handleSendAnswer}
-                    disabled={!draftAnswer.trim()}
-                    className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Send my answer
-                  </button>
-                </>
-              ) : null}
+                ) : null}
 
-              {phase === "listening" ? (
-                <button
-                  onClick={handleStopListening}
-                  className="px-8 py-4 bg-red-500 text-white rounded-2xl hover:bg-red-600 font-medium shadow-lg shadow-red-200"
-                >
-                  Stop
-                </button>
-              ) : null}
-
-              {phase === "reviewing" ? (
-                <>
+                {phase === "thinking" ? (
                   <button
-                    onClick={handleResumeListening}
-                    className="px-6 py-4 bg-white border-2 border-purple-300 text-purple-700 rounded-2xl hover:bg-purple-50 font-medium"
+                    disabled
+                    className="px-8 py-4 bg-slate-200 text-slate-500 rounded-2xl font-medium cursor-not-allowed"
                   >
-                    Add more
-                  </button>
-                  <button
-                    onClick={handleClearAndRetry}
-                    className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    onClick={handleSendAnswer}
-                    disabled={!draftAnswer.trim()}
-                    className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Send my answer
-                  </button>
-                </>
-              ) : null}
-            </div>
-
-            {messages.length > 1 ? (
-              <div className="mt-12 text-center">
-                <details className="text-xs text-slate-400">
-                  <summary className="cursor-pointer hover:text-slate-600">Conversation history</summary>
-                  <div className="mt-4 text-left space-y-3 max-w-xl mx-auto">
-                    {reversedMessages.map(function (m, i) {
-                      return (
-                        <div key={i} className={m.role === "ai" ? "text-slate-700 text-sm" : "text-purple-700 text-sm"}>
-                          <strong>{m.role === "ai" ? "Investor:" : "You:"}</strong> {m.text}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-    </main>
-  );
-}
+                    Thinking
