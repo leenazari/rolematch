@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { PitchData } from "@/types";
 
-const INTRO_VIDEO_URL_PITCH = "";  // Will be set in Phase 5 when intro is recorded
+const INTRO_VIDEO_URL_PITCH = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/pitchperfect.mp4";
 
 type Props = {
   data: PitchData;
