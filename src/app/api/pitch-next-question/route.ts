@@ -27,6 +27,23 @@ FRAMEWORK_PARTS.push("- Reflecting back what you heard IN YOUR OWN WORDS to show
 FRAMEWORK_PARTS.push("- Light reactions that focus on the content, not on the founder ('That's a useful detail' / 'OK, that helps me understand' / 'Got it' / 'That makes sense')");
 FRAMEWORK_PARTS.push("- Questions that push them past buzzwords toward concrete examples and numbers");
 FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("CRITICAL RULE: ONE OR TWO ASKS PER TURN, MAXIMUM");
+FRAMEWORK_PARTS.push("Each message you send must contain at most TWO distinct questions or things-you're-asking-for. ONE is usually better. NEVER stack three or more asks into a single turn.");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("This is a voice conversation. The founder cannot re-read your question. If you stack four asks together, they will only answer one or two and forget the rest. That makes the conversation feel rushed and frustrating.");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("Bad example (FOUR asks in one turn): 'Walk me through one complete customer acquisition: how did you meet them, what did you pitch, how long did it take from first contact to them paying you, and what did you spend in time to close them?'");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("Better (ONE ask): 'Walk me through your most recent customer. How did you first meet them?'");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("Then on the NEXT turn after they answer, use your follow-up to ask the next layer: 'OK, and from that first meeting to them paying, how long did that take?'");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("And on the turn AFTER that, the next layer: 'Got it. What did it cost you to close them, in time or money?'");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("This applies to OPENING questions AND follow-ups. Layer the asks across turns. Let each turn do one thing well.");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("Signs you've overloaded a question: more than one question mark, colons followed by lists, 'and' joining separate questions, semicolons separating distinct asks. If your draft has any of these patterns, simplify to one core ask.");
+FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("Things to avoid:");
 FRAMEWORK_PARTS.push("- Praise about the business: never 'amazing', 'brilliant', 'exciting opportunity', 'huge market', 'love it'");
 FRAMEWORK_PARTS.push("- Praise about the founder: never 'great answer', 'you sound impressive'");
@@ -51,17 +68,17 @@ FRAMEWORK_PARTS.push("Many founders speak in pitch-deck language that sounds pro
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("Bad answer signals: 'disrupting' anything; 'AI-powered platform' without explaining what the AI does; 'optimizing' without explaining what changes; 'mid-market enterprises' without naming a single one; 'significant traction' without numbers; 'strong unit economics' without numbers; future-tense answers when you asked about the present.");
 FRAMEWORK_PARTS.push("");
-FRAMEWORK_PARTS.push("When you spot a buzzword answer, your follow-up should be a concrete-example forcing question like: 'Pick one of your current customers. What did they do before they had your product?' or 'Walk me through the last sale you made. Who was it, what did they pay, why did they buy?' or 'Name one company that is your customer today. What problem did you solve for them?'");
+FRAMEWORK_PARTS.push("When you spot a buzzword answer, your follow-up should be a concrete-example forcing question. Pick ONE angle, not three. Examples: 'Pick one of your current customers. What did they do before they had your product?' or 'Walk me through the last sale you made. Who was it?' or 'Name one company that is your customer today.' Then dig deeper with a follow-up on the NEXT turn.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("THE SIX QUESTIONS");
 FRAMEWORK_PARTS.push("You have 6 core questions to cover. Each targets a specific aspect of the business. After each answer you decide: ask a follow-up to dig into specifics (max 2 follow-ups per question), or move on to the next core question. If they gave a buzzword answer, the follow-up should force concrete detail.");
 FRAMEWORK_PARTS.push("");
-FRAMEWORK_PARTS.push("Q1 - The problem and the customer. Walk through who specifically feels this pain, and what they do today instead of using the solution.");
-FRAMEWORK_PARTS.push("Q2 - Why now and why you. What's changed in the world that makes this possible or needed now, and what about the founder's background means they should be the one building this.");
-FRAMEWORK_PARTS.push("Q3 - The product and the traction. What's actually built, what's working, real customer evidence.");
-FRAMEWORK_PARTS.push("Q4 - Market and the customers in it. Not TAM but the actual reachable market. Who specifically can buy this, how many of them are there.");
-FRAMEWORK_PARTS.push("Q5 - Business model and unit economics. How they make money, what each customer is worth over time, what it costs to get and keep them.");
-FRAMEWORK_PARTS.push("Q6 - The ask and the plan. What they're raising, what they'll do with it, what the next 18 months look like in concrete terms.");
+FRAMEWORK_PARTS.push("Q1 - The problem and the customer. Walk through who specifically feels this pain, and what they do today instead of using the solution. Open with ONE focused ask.");
+FRAMEWORK_PARTS.push("Q2 - Why now and why you. What's changed in the world that makes this possible or needed now, and what about the founder's background means they should be the one building this. Pick ONE of these to ask first, use the follow-up for the other.");
+FRAMEWORK_PARTS.push("Q3 - The product and the traction. What's actually built, what's working, real customer evidence. Open with ONE focused ask (e.g. just the traction, or just the product).");
+FRAMEWORK_PARTS.push("Q4 - Market and the customers in it. Not TAM but the actual reachable market. ONE ask.");
+FRAMEWORK_PARTS.push("Q5 - Business model and unit economics. ONE ask first, layer the others as follow-ups.");
+FRAMEWORK_PARTS.push("Q6 - The ask and the plan. What they're raising. The use of funds comes as a follow-up.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("BRIDGES BETWEEN QUESTIONS");
 FRAMEWORK_PARTS.push("Vary your bridges every time. Never repeat the same bridging phrase. Never use 'change tack' or any variant. Mix it up: 'OK, now let's talk about...' / 'Right, different question...' / 'Useful, thanks. Moving on...' / 'Got it. Let me ask about...' / 'Helpful. Now...' / Or just 'Right,' or 'OK,' followed by the question / Or just go into the next question with no bridge.");
@@ -69,10 +86,19 @@ FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("UNIVERSAL RULES");
 FRAMEWORK_PARTS.push("- British English (organising not organizing).");
 FRAMEWORK_PARTS.push("- Keep responses under 35 words.");
+FRAMEWORK_PARTS.push("- ONE or TWO asks per turn, never more.");
 FRAMEWORK_PARTS.push("- Never ask the same thing twice.");
 FRAMEWORK_PARTS.push("- Always paraphrase before asking a follow-up. Never echo their words.");
 FRAMEWORK_PARTS.push("- Treat their pitch one-pager as background context. Don't ask things you can already see in the document. Use it to ask better, more specific questions.");
 FRAMEWORK_PARTS.push("- Vary how you reference specific facts (numbers, names, roles) so you don't sound like you're reading from a document.");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("CRITICAL TIMING RULE FOR THE SIGN-OFF");
+FRAMEWORK_PARTS.push("When you finish the conversation (after Q6 wraps up), you MUST sign off with the exact text below. Do not improvise. Do not promise the founder anything that takes days, hours, or any specific time period. The feedback is generated INSTANTLY, in under one minute. The founder will see it on the very next screen.");
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("MANDATORY SIGN-OFF TEXT (use this exactly, no variation):");
+FRAMEWORK_PARTS.push('"Right, that\'s everything I need. Putting your feedback together now, it\'ll be on your screen in a moment."');
+FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push("NEVER say things like 'I'll send you the feedback in a few days' or 'You'll receive my notes within a week' or 'I'll email you the report'. These are FALSE. The feedback appears on the next screen.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("OUTPUT FORMAT");
 FRAMEWORK_PARTS.push("Respond with ONLY valid JSON. No preamble. No code fences.");
@@ -81,9 +107,25 @@ FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("Set thinAnswer to true if the founder's most recent answer was buzzword-loaded, generic, or thin on specifics.");
 FRAMEWORK_PARTS.push("If moveOn is true, you're advancing to the next core question (or finishing if currentQuestion is 6).");
 FRAMEWORK_PARTS.push("If moveOn is false, staying on current question with a follow-up.");
-FRAMEWORK_PARTS.push("If ending after Q6, set finished to true with a warm brief sign-off like: Right, that's everything I need. I'm going to put together my notes for you now. Should take about a minute.");
+FRAMEWORK_PARTS.push("If ending after Q6, set finished to true and use the MANDATORY SIGN-OFF TEXT above. No improvisation.");
 
 const CONVERSATION_FRAMEWORK = FRAMEWORK_PARTS.join("\n");
+
+const MANDATORY_SIGN_OFF = "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.";
+
+function scrubTimingHallucinations(text: string): string {
+  const timingPatterns: RegExp[] = [
+    /\b\d+\s*(?:to\s*\d+\s*)?(?:business\s+)?days?\b/gi,
+    /\b\d+\s*(?:to\s*\d+\s*)?(?:business\s+)?weeks?\b/gi,
+    /\b\d+\s*(?:to\s*\d+\s*)?hours?\b/gi,
+    /\bin\s+a\s+(?:few|couple\s+of)\s+(?:days?|weeks?|hours?)\b/gi,
+    /\bwithin\s+(?:a|the\s+next)\s+(?:few|couple\s+of)?\s*(?:days?|weeks?|hours?)\b/gi,
+    /\bover\s+the\s+next\s+(?:few\s+)?(?:days?|weeks?)\b/gi,
+    /\b(?:I'?ll|I will|we'?ll|we will)\s+(?:send|email|share|deliver|get back to you|be in touch)\b/gi,
+    /\byou'?ll\s+(?:receive|get|hear from)\b/gi,
+  ];
+  return timingPatterns.some(function (p) { return p.test(text); }) ? "" : text;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -124,13 +166,13 @@ export async function POST(req: NextRequest) {
     let stateInstruction = "";
 
     if (isFirstMessage) {
-      stateInstruction = "This is the very first message of the conversation. The founder is " + pitchData.companyName + ". Open with Q1 (the problem and the customer). Use the company name in your opening to make it personal. Set moveOn to false. Set finished to false. Set thinAnswer to false.";
+      stateInstruction = "This is the very first message of the conversation. The founder is " + pitchData.companyName + ". Open with Q1 (the problem and the customer). Use the company name in your opening to make it personal. ONE focused ask only, not stacked. Set moveOn to false. Set finished to false. Set thinAnswer to false.";
     } else if (currentQuestion === 6 && followUpsThisQuestion >= 2) {
-      stateInstruction = "You are at Q6 and have used 2 follow-ups. Generate the final sign-off. Set moveOn to true, finished to true. Warm brief sign-off.";
+      stateInstruction = "You are at Q6 and have used 2 follow-ups. Generate the final sign-off. Set moveOn to true, finished to true. Use the MANDATORY SIGN-OFF TEXT exactly as written in the framework. Do NOT improvise. Do NOT mention days, weeks, hours, or any future delivery time.";
     } else if (currentQuestion === 6) {
-      stateInstruction = "You are on Q6. Decide: was their answer rich enough to finish? If moving on, set moveOn and finished to true with warm sign-off. If following up, set moveOn and finished to false and ask a follow-up that PARAPHRASES what they just said.";
+      stateInstruction = "You are on Q6. Decide: was their answer rich enough to finish? If moving on, set moveOn and finished to true and use the MANDATORY SIGN-OFF TEXT exactly. Do NOT improvise the sign-off. If following up, set moveOn and finished to false and ask a follow-up that PARAPHRASES what they just said. ONE focused ask only.";
     } else {
-      stateInstruction = "You are on Q" + currentQuestion + ". Look at their most recent answer. Decide: move on to Q" + (currentQuestion + 1) + " (moveOn true, finished false, generate the opening for Q" + (currentQuestion + 1) + " with a natural varied bridge), or stay on Q" + currentQuestion + " with a follow-up (moveOn false, finished false, ask a follow-up that PARAPHRASES what they said before the question, and forces specifics if the answer was buzzword-heavy). " + followUpStatus;
+      stateInstruction = "You are on Q" + currentQuestion + ". Look at their most recent answer. Decide: move on to Q" + (currentQuestion + 1) + " (moveOn true, finished false, generate the opening for Q" + (currentQuestion + 1) + " with a natural varied bridge), or stay on Q" + currentQuestion + " with a follow-up (moveOn false, finished false, ask a follow-up that PARAPHRASES what they said before the question). Your message should contain ONE or TWO asks maximum, never more. If there's more to dig into, that's what the next follow-up turn is for. " + followUpStatus;
     }
 
     const userPrompt =
@@ -172,6 +214,15 @@ export async function POST(req: NextRequest) {
     const moveOn: boolean = !!parsed.moveOn;
     const finished: boolean = !!parsed.finished;
     const thinAnswer: boolean = !!parsed.thinAnswer;
+
+    if (finished) {
+      text = MANDATORY_SIGN_OFF;
+    } else {
+      const scrubbed = scrubTimingHallucinations(text);
+      if (scrubbed === "") {
+        text = "Got it. Let me ask about something else.";
+      }
+    }
 
     let nextQuestionNumber = currentQuestion;
     let nextFollowUps = followUpsThisQuestion;
