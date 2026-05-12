@@ -6,15 +6,12 @@ export default function HomePage() {
   return (
     <main className="min-h-screen mesh-bg-pitch px-6 py-16 flex flex-col items-center justify-center">
       <div className="max-w-5xl mx-auto w-full">
-        <div className="text-center mb-16">
-          <div className="text-sm font-semibold text-slate-500 mb-4 tracking-widest uppercase">
-            Innovation13
-          </div>
+       <div className="text-center mb-16">
           <h1 className="text-5xl md:text-7xl display-headline text-slate-900 mb-6">
-            Two tools to help you go further.
+            Career or company.<br />We'll help you figure it out.
           </h1>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Pick the one that fits where you are right now.
+            Two honest AI conversations. Pick the one you need.
           </p>
         </div>
 
