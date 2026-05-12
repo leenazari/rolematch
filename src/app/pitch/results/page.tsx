@@ -19,6 +19,128 @@ function formatTimestamp(iso: string): string {
   }
 }
 
+function VerdictBadge(props: { category: string }) {
+  const { category } = props;
+  const styles = (function () {
+    if (category === "ready") {
+      return {
+        bg: "bg-green-100",
+        border: "border-green-300",
+        text: "text-green-800",
+        label: "Ready to raise",
+      };
+    }
+    if (category === "almost") {
+      return {
+        bg: "bg-amber-100",
+        border: "border-amber-300",
+        text: "text-amber-800",
+        label: "Almost ready",
+      };
+    }
+    return {
+      bg: "bg-slate-100",
+      border: "border-slate-300",
+      text: "text-slate-700",
+      label: "Keep building",
+    };
+  })();
+
+  return (
+    <div className={"inline-flex items-center px-4 py-2 rounded-full border-2 " + styles.bg + " " + styles.border + " " + styles.text + " font-semibold text-sm uppercase tracking-wider"}>
+      {styles.label}
+    </div>
+  );
+}
+
+const LOADING_MESSAGES = [
+  "Reading back through everything you said...",
+  "Looking for what's really strong in your business...",
+  "Pulling on the threads that might be weak...",
+  "Thinking about what real VCs would ask next...",
+  "Putting the verdict together...",
+];
+
+function LoadingState(props: { companyName: string }) {
+  const { companyName } = props;
+  const [messageIndex, setMessageIndex] = useState(0);
+  const [fading, setFading] = useState(false);
+
+  useEffect(function () {
+    const interval = setInterval(function () {
+      setFading(true);
+      setTimeout(function () {
+        setMessageIndex(function (prev) {
+          if (prev >= LOADING_MESSAGES.length - 1) {
+            return prev;
+          }
+          return prev + 1;
+        });
+        setFading(false);
+      }, 400);
+    }, 6000);
+
+    return function () { clearInterval(interval); };
+  }, []);
+
+  return (
+    <main className="min-h-screen mesh-bg-pitch flex items-center justify-center px-6">
+      <div className="glass-card-strong rounded-3xl p-12 max-w-xl w-full text-center">
+        <div className="text-xs font-semibold text-purple-600 mb-3 tracking-widest uppercase">
+          Pitch Perfect
+        </div>
+        <h2 className="text-2xl md:text-3xl display-headline-tight text-slate-900 mb-2">
+          Preparing your feedback
+        </h2>
+        {companyName ? (
+          <p className="text-sm text-slate-500 mb-10">For {companyName}</p>
+        ) : null}
+
+        {/* Animated waveform */}
+        <div className="flex items-end justify-center gap-1.5 h-16 mb-8">
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(function (i) {
+            return (
+              <div
+                key={i}
+                className="w-1.5 rounded-full bg-purple-500"
+                style={{
+                  animation: "waveform-pulse 1.4s ease-in-out " + (i * 0.08) + "s infinite",
+                  opacity: 0.7,
+                }}
+              />
+            );
+          })}
+        </div>
+
+        {/* Rotating message with fade */}
+        <p
+          className="text-lg text-slate-700 leading-relaxed smooth-transition min-h-[3rem]"
+          style={{ opacity: fading ? 0 : 1 }}
+        >
+          {LOADING_MESSAGES[messageIndex]}
+        </p>
+
+        <p className="text-xs text-slate-400 mt-6">
+          This usually takes about thirty seconds.
+        </p>
+      </div>
+
+      <style jsx>{`
+        @keyframes waveform-pulse {
+          0%, 100% {
+            height: 8px;
+            opacity: 0.4;
+          }
+          50% {
+            height: 56px;
+            opacity: 1;
+          }
+        }
+      `}</style>
+    </main>
+  );
+}
+
 export default function PitchResultsPage() {
   const router = useRouter();
   const [pitchData, setPitchData] = useState<PitchData | null>(null);
@@ -108,8 +230,8 @@ export default function PitchResultsPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-md">
+      <main className="min-h-screen mesh-bg-pitch flex items-center justify-center px-6">
+        <div className="glass-card-strong rounded-3xl p-10 max-w-md text-center">
           <h1 className="text-2xl font-bold text-slate-900 mb-4">Something went wrong</h1>
           <p className="text-slate-600 mb-6">{error}</p>
           <p className="text-sm text-slate-500 mb-6">Your conversation is saved. You don't need to redo it.</p>
@@ -125,7 +247,7 @@ export default function PitchResultsPage() {
                   router.push("/pitch");
                 }
               }}
-              className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-medium"
+              className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-medium smooth-transition"
             >
               Try generating again
             </button>
@@ -139,15 +261,7 @@ export default function PitchResultsPage() {
   }
 
   if (!critique) {
-    return (
-      <main className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-md">
-          <div className="inline-block w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mb-6"></div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Putting your notes together</h2>
-          <p className="text-slate-600">This usually takes about thirty seconds.</p>
-        </div>
-      </main>
-    );
+    return <LoadingState companyName={pitchData?.companyName || ""} />;
   }
 
   return (
@@ -176,8 +290,13 @@ export default function PitchResultsPage() {
         </div>
 
         <section className="bg-purple-50 border-l-4 border-purple-600 rounded-r-2xl p-6 mb-8">
-          <div className="text-xs font-semibold uppercase tracking-wider text-purple-700 mb-2">
-            Verdict
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+            <div className="text-xs font-semibold uppercase tracking-wider text-purple-700">
+              Verdict
+            </div>
+            {critique.verdictCategory ? (
+              <VerdictBadge category={critique.verdictCategory} />
+            ) : null}
           </div>
           <p className="text-lg text-slate-800 leading-relaxed">
             {critique.verdict}
