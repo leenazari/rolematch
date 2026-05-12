@@ -74,6 +74,7 @@ export type PitchMessage = {
 
 export type PitchCritique = {
   verdict: string;
+  verdictCategory: "ready" | "almost" | "keep_building";
   strong: string[];
   weak: string[];
   fatalFlaw: string | null;
