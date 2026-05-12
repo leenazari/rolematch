@@ -78,10 +78,10 @@ export default function PitchUpload(props: Props) {
 
   if (uploading) {
     return (
-      <div className="text-center py-12">
-        <div className="inline-block w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mb-6"></div>
-        <p className="text-slate-700 font-medium">Reading your pitch...</p>
-        <p className="text-sm text-slate-500 mt-1">This usually takes about ten seconds.</p>
+      <div className="glass-card rounded-3xl py-16 text-center max-w-2xl mx-auto">
+        <div className="inline-block w-14 h-14 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mb-6"></div>
+        <p className="text-lg text-slate-800 font-semibold mb-2">Reading your pitch...</p>
+        <p className="text-sm text-slate-500">This usually takes about ten seconds.</p>
       </div>
     );
   }
@@ -92,16 +92,16 @@ export default function PitchUpload(props: Props) {
         <button
           onClick={() => { setMode("upload"); setError(""); }}
           className={mode === "upload"
-            ? "px-5 py-2 rounded-full bg-purple-600 text-white font-medium text-sm"
-            : "px-5 py-2 rounded-full bg-white border border-slate-300 text-slate-600 font-medium text-sm hover:bg-slate-50"}
+            ? "px-6 py-2.5 rounded-full bg-purple-600 text-white font-semibold text-sm smooth-transition shadow-lg shadow-purple-200"
+            : "px-6 py-2.5 rounded-full glass-card text-slate-700 font-semibold text-sm hover:bg-white smooth-transition"}
         >
           Upload PDF
         </button>
         <button
           onClick={() => { setMode("paste"); setError(""); }}
           className={mode === "paste"
-            ? "px-5 py-2 rounded-full bg-purple-600 text-white font-medium text-sm"
-            : "px-5 py-2 rounded-full bg-white border border-slate-300 text-slate-600 font-medium text-sm hover:bg-slate-50"}
+            ? "px-6 py-2.5 rounded-full bg-purple-600 text-white font-semibold text-sm smooth-transition shadow-lg shadow-purple-200"
+            : "px-6 py-2.5 rounded-full glass-card text-slate-700 font-semibold text-sm hover:bg-white smooth-transition"}
         >
           Paste text
         </button>
@@ -114,8 +114,8 @@ export default function PitchUpload(props: Props) {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
           className={dragging
-            ? "border-2 border-dashed border-purple-500 bg-purple-50 rounded-3xl p-12 text-center cursor-pointer transition-colors"
-            : "border-2 border-dashed border-slate-300 bg-white rounded-3xl p-12 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors"}
+            ? "border-2 border-dashed border-purple-500 glass-card-strong rounded-3xl p-16 text-center cursor-pointer smooth-transition"
+            : "border-2 border-dashed border-slate-300 glass-card rounded-3xl p-16 text-center cursor-pointer hover:border-purple-400 smooth-transition"}
         >
           <input
             ref={fileInputRef}
@@ -127,29 +127,33 @@ export default function PitchUpload(props: Props) {
               if (file) handleFile(file);
             }}
           />
-          <div className="text-5xl mb-4">📄</div>
-          <p className="text-lg font-semibold text-slate-900 mb-1">
+          <div className="mb-4">
+            <svg className="w-16 h-16 mx-auto text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <p className="text-xl font-bold text-slate-900 mb-2">
             Drop your one-pager here
           </p>
-          <p className="text-sm text-slate-500 mb-2">
+          <p className="text-sm text-slate-500 mb-3">
             or click to browse
           </p>
-          <p className="text-xs text-slate-400">
-            PDF up to 3 pages. Most useful: problem, solution, traction, team, market, ask.
+          <p className="text-xs text-slate-400 max-w-xs mx-auto">
+            PDF up to 3 pages. Include problem, solution, traction, team, market, ask.
           </p>
         </div>
       ) : (
-        <div className="bg-white border-2 border-slate-200 rounded-3xl p-6">
+        <div className="glass-card rounded-3xl p-6">
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
             placeholder="Paste your pitch text here. Include problem, solution, traction, team, market, and what you're raising. The more detail, the better the conversation."
-            className="w-full h-64 p-4 border border-slate-300 rounded-xl focus:border-purple-400 focus:outline-none resize-none text-sm"
+            className="w-full h-64 p-4 border border-slate-300 rounded-xl focus:border-purple-400 focus:outline-none resize-none text-sm bg-white/80 smooth-transition"
           />
           <button
             onClick={handlePasteSubmit}
             disabled={!pasteText.trim()}
-            className="mt-4 w-full px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            className="mt-4 w-full px-6 py-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed smooth-transition shadow-lg shadow-purple-200"
           >
             Use this text
           </button>
@@ -157,7 +161,7 @@ export default function PitchUpload(props: Props) {
       )}
 
       {error && (
-        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+        <div className="mt-4 p-4 bg-red-50/80 backdrop-blur border border-red-200 rounded-xl text-sm text-red-700">
           {error}
         </div>
       )}
