@@ -37,7 +37,7 @@ const TEST_CONVERSATION_TILLY: PitchMessage[] = [
   { role: "user", text: "Average customer pays us £49 a month for software plus 1.4 percent on their transaction volume. The average venue does about £25k a month in card transactions, so we make about £350 a month per customer total, £4,200 a year. CAC is roughly £600 because most of our growth is word of mouth and direct outreach. Gross margin on the software is 92 percent, on the payments side it's about 35 percent after interchange." },
   { role: "ai", text: "Got it. Last one. What are you raising and what does the next 18 months look like with that money?", questionNumber: 6 },
   { role: "user", text: "We're raising £750k seed at £4M pre-money. £280k for GTM, two sales hires and a senior marketer. £320k for engineering, two senior engineers to ship the inventory module and multi-site dashboards. £150k runway. By end of 18 months we want to be at 400 paying venues, £25k MRR plus £35k a month payments, multi-site dashboard live to unlock the small chain segment." },
-  { role: "ai", text: "Right, that's everything I need. I'm going to put together my notes for you now. Should take about a minute.", questionNumber: 6 },
+  { role: "ai", text: "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.", questionNumber: 6 },
 ];
 
 const TEST_PITCH_WEAK: PitchData = {
@@ -69,7 +69,7 @@ const TEST_CONVERSATION_WEAK: PitchMessage[] = [
   { role: "user", text: "We haven't fully figured out our pricing yet but we're thinking enterprise SaaS pricing, probably £30k to £50k a year per customer. CAC we'll figure out post-launch." },
   { role: "ai", text: "Got it. Last one. What are you raising and what does the next 18 months look like?", questionNumber: 6 },
   { role: "user", text: "We're looking to raise around £1M to £2M for our seed round. We'll use it to build out the team, scale our marketing, and acquire customers." },
-  { role: "ai", text: "Right, that's everything I need. I'm going to put together my notes for you now.", questionNumber: 6 },
+  { role: "ai", text: "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.", questionNumber: 6 },
 ];
 
 export default function PitchPage() {
@@ -102,47 +102,47 @@ export default function PitchPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
+    <main className="min-h-screen mesh-bg-pitch px-6 py-16">
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-          <div className="text-sm font-semibold text-purple-600 mb-3 tracking-widest uppercase">
+        <div className="text-center mb-16">
+          <div className="text-sm font-semibold text-purple-600 mb-4 tracking-widest uppercase">
             Pitch Perfect
           </div>
           {stage === "welcome" && (
             <>
-              <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight leading-tight">
-                Pitch your business to an AI investor.
+              <h1 className="text-5xl md:text-7xl display-headline text-slate-900 mb-6">
+                Pitch your business.<br />Get honest feedback.
               </h1>
-              <p className="text-lg text-slate-600 mb-2 max-w-xl mx-auto">
-                Upload your one-pager, have a friendly conversation about your seed-stage business, then get an honest written breakdown.
+              <p className="text-lg text-slate-600 mb-3 max-w-xl mx-auto">
+                Upload your one-pager, have a friendly conversation, then get a written breakdown that doesn't pull punches.
               </p>
-              <p className="text-xs text-slate-400 mb-10">
-                We use your pitch only for this session. No account needed.
+              <p className="text-xs text-slate-400">
+                For seed-stage founders. We use your pitch only for this session.
               </p>
             </>
           )}
         </div>
 
         {testMode && stage === "welcome" && (
-          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 mb-8 max-w-2xl mx-auto">
+          <div className="bg-amber-50/80 backdrop-blur border-2 border-amber-300 rounded-2xl p-6 mb-8 max-w-2xl mx-auto">
             <div className="text-xs font-semibold uppercase tracking-wider text-amber-800 mb-3">
               Test mode (only visible with ?test=true)
             </div>
             <p className="text-sm text-amber-900 mb-4">
-              Skip the conversation and go straight to results with pre-baked test data. Used for iterating on the results prompt.
+              Skip the conversation and go straight to results with pre-baked test data.
             </p>
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => loadTestPreset("tilly")}
-                className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm"
+                className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm smooth-transition"
               >
-                Use Tilly (realistic mid-tier pitch)
+                Use Tilly (mid-tier pitch)
               </button>
               <button
                 onClick={() => loadTestPreset("weak")}
-                className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm"
+                className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm smooth-transition"
               >
-                Use Synapse AI (buzzword-heavy weak pitch)
+                Use Synapse AI (weak pitch)
               </button>
             </div>
           </div>
@@ -171,10 +171,10 @@ export default function PitchPage() {
           />
         )}
 
-        <div className="text-center mt-12">
+        <div className="text-center mt-16">
           <button
             onClick={() => router.push("/")}
-            className="text-sm text-slate-400 hover:text-slate-600 underline"
+            className="text-sm text-slate-400 hover:text-slate-600 underline smooth-transition"
           >
             Back to home
           </button>
