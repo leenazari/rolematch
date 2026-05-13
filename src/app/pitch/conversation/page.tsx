@@ -115,8 +115,7 @@ export default function PitchConversationPage() {
       if (json.finished) {
         track("conversation_completed");
         setFinished(true);
-        const fallback = "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.";
-        const finalText = cleanedText || fallback;
+const fallback = "Right, that's everything I need. Thanks for taking the time. Putting your feedback together now, it'll be on your screen in a moment.";        const finalText = cleanedText || fallback;
         const aiMsg: PitchMessage = { role: "ai", text: finalText, questionNumber: json.questionNumber };
         const finalHistory = [...history, aiMsg];
         setMessages(finalHistory);
