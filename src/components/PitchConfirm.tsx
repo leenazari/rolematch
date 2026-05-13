@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { track } from "@vercel/analytics";
 import type { PitchData } from "@/types";
 
 const INTRO_VIDEO_URL_PITCH = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/pitchperfect.mp4";
@@ -86,6 +87,11 @@ export default function PitchConfirm(props: Props) {
     setEdited({ ...edited, [key]: value });
   }
 
+  function handleConfirm() {
+    track("pitch_started", { sector: edited.sector || "unknown", stage: edited.stage || "unknown" });
+    onConfirm(edited);
+  }
+
   const canConfirm = edited.companyName.trim() && edited.oneLineDescription.trim();
 
   return (
@@ -142,7 +148,7 @@ export default function PitchConfirm(props: Props) {
           Start over
         </button>
         <button
-          onClick={() => canConfirm && onConfirm(edited)}
+          onClick={() => canConfirm && handleConfirm()}
           disabled={!canConfirm}
           className="flex-[2] px-6 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-semibold text-base disabled:opacity-40 disabled:cursor-not-allowed smooth-transition shadow-lg shadow-purple-200"
         >
