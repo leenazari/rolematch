@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
     title: "Voice Reach",
     description: "Two honest AI conversations. Pick the one you need.",
   },
-   icons: {
+  icons: {
     icon: [
       { url: "/favicon.svg?v=2", type: "image/svg+xml" },
     ],
@@ -37,7 +38,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
