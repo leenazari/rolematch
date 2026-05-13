@@ -17,12 +17,12 @@ export const metadata: Metadata = {
     title: "Voice Reach",
     description: "Two honest AI conversations. Pick the one you need.",
   },
-  icons: {
+   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.svg?v=2", type: "image/svg+xml" },
     ],
-    shortcut: "/favicon.svg",
-    apple: "/favicon.svg",
+    shortcut: "/favicon.svg?v=2",
+    apple: "/favicon.svg?v=2",
   },
   robots: {
     index: false,
