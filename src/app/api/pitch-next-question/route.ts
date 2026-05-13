@@ -96,8 +96,7 @@ FRAMEWORK_PARTS.push("CRITICAL TIMING RULE FOR THE SIGN-OFF");
 FRAMEWORK_PARTS.push("When you finish the conversation (after Q6 wraps up), you MUST sign off with the exact text below. Do not improvise. Do not promise the founder anything that takes days, hours, or any specific time period. The feedback is generated INSTANTLY, in under one minute. The founder will see it on the very next screen.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("MANDATORY SIGN-OFF TEXT (use this exactly, no variation):");
-FRAMEWORK_PARTS.push('"Right, that\'s everything I need. Putting your feedback together now, it\'ll be on your screen in a moment."');
-FRAMEWORK_PARTS.push("");
+FRAMEWORK_PARTS.push('"Right, that\'s everything I need. Thanks for taking the time. Putting your feedback together now, it\'ll be on your screen in a moment."');FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("NEVER say things like 'I'll send you the feedback in a few days' or 'You'll receive my notes within a week' or 'I'll email you the report'. These are FALSE. The feedback appears on the next screen.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("OUTPUT FORMAT");
@@ -111,7 +110,7 @@ FRAMEWORK_PARTS.push("If ending after Q6, set finished to true and use the MANDA
 
 const CONVERSATION_FRAMEWORK = FRAMEWORK_PARTS.join("\n");
 
-const MANDATORY_SIGN_OFF = "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.";
+const MANDATORY_SIGN_OFF = "Right, that's everything I need. Thanks for taking the time. Putting your feedback together now, it'll be on your screen in a moment.";
 
 function scrubTimingHallucinations(text: string): string {
   const timingPatterns: RegExp[] = [
