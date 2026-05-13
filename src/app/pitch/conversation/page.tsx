@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { track } from "@vercel/analytics";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { usePitchSpeechSynthesis } from "@/hooks/usePitchSpeechSynthesis";
 import VoiceOrb from "@/components/VoiceOrb";
@@ -24,6 +25,7 @@ export default function PitchConversationPage() {
   const [introPlaying, setIntroPlaying] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const trackedQuestionsRef = useRef<Set<number>>(new Set());
 
   const { supported: voiceSupported, listening, transcript, interim, start, stop, hardReset } = useSpeechRecognition();
   const { speak, speaking, stopSpeaking } = usePitchSpeechSynthesis();
@@ -46,6 +48,16 @@ export default function PitchConversationPage() {
       setPhase("ai_speaking");
     }
   }, [speaking]);
+
+  // Track question-reached events at key milestones
+  useEffect(function () {
+    if (!hasStarted || introPlaying) return;
+    const milestones = [1, 3, 5];
+    if (milestones.includes(currentQuestion) && !trackedQuestionsRef.current.has(currentQuestion)) {
+      trackedQuestionsRef.current.add(currentQuestion);
+      track("conversation_q" + currentQuestion + "_reached");
+    }
+  }, [currentQuestion, hasStarted, introPlaying]);
 
   async function startConversation() {
     if (!pitchData) return;
@@ -88,6 +100,7 @@ export default function PitchConversationPage() {
       });
       const json = await res.json();
       if (!json.ok) {
+        track("error_encountered", { stage: "conversation", error: json.error || "unknown" });
         setPhase("idle");
         return;
       }
@@ -100,8 +113,9 @@ export default function PitchConversationPage() {
         .trim();
 
       if (json.finished) {
+        track("conversation_completed");
         setFinished(true);
-        const fallback = "Right, that's everything I need. I'm going to put together my notes for you now. Should take about a minute.";
+        const fallback = "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.";
         const finalText = cleanedText || fallback;
         const aiMsg: PitchMessage = { role: "ai", text: finalText, questionNumber: json.questionNumber };
         const finalHistory = [...history, aiMsg];
@@ -124,6 +138,7 @@ export default function PitchConversationPage() {
         setPhase("idle");
       });
     } catch (e) {
+      track("error_encountered", { stage: "conversation", error: "network" });
       setPhase("idle");
     }
   }
