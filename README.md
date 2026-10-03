@@ -44,7 +44,8 @@ are retained privately in Supabase.
 
 Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or the legacy
 `SUPABASE_SERVICE_ROLE_KEY`, only if legacy keys are enabled) in Vercel Production and Preview. These are server-only
-variables. Apply the `pitch_report_archive`, `pitch_report_progress` and `pitch_report_parts` migrations in
+variables. Apply the `pitch_report_archive`, `pitch_report_progress`, `pitch_report_parts`
+and `pitch_feedback_chunks` migrations in
 `supabase/migrations`. They are applied to RoleMatch project `ryrseyvgfmrmiqngkvxs`.
 Use a modern `sb_secret_` key for this project; its legacy keys are disabled.
 
@@ -66,12 +67,14 @@ readers from overwriting newer progress. The worker also archives the final PDF
 if the browser disconnects. Refresh resumes the same saved responses. Older
 non-streaming jobs remain recoverable through normal polling.
 
-New reports run fast feedback and market research independently. The feedback call
-has no search tools and returns two ordered objects: `first` contains the short
-verdict, category and strengths; `second` contains fixes, the revised pitch, actions,
-questions, glossary and practical AI pilots. Each complete object becomes readable
-before the next part is ready. The separate market call has at most two searches.
-Both response IDs, validated results and usage are saved in the same private row.
+New reports run fast feedback and market research independently. The opening call
+has no search tools and only generates `first`: a short verdict, category and
+strengths. Once that chunk is saved, one atomically claimed detail call generates
+`second`: fixes, the revised pitch, actions, questions, glossary and practical AI
+pilots, using the saved opening as context. This does not rely on the model choosing
+to write JSON keys in a particular order. The market call runs alongside the opening
+and details, with at most two searches. All three response IDs, results and usage
+are saved in the same private row. Retrying failed details keeps the saved opening.
 Research never changes the pitch scoring. A failed research part can be retried
 without regenerating the saved feedback. An atomic claim prevents duplicate starts.
 
@@ -104,8 +107,9 @@ until the upgrade succeeds. Refreshing/retrying the upgrade reuses its job rathe
 than starting another paid generation. No upgrade runs automatically.
 
 Cost controls: two web tool calls maximum across the report, low search context,
-low reasoning effort, 4,200 feedback output tokens plus 1,800 research output tokens
-maximum, and 80,000 input characters per part. Legacy single-response reports use
+low reasoning effort, 1,400 opening output tokens, 3,600 detail output tokens and
+1,800 research output tokens maximum, and 80,000 input characters per part. Earlier
+two-response jobs retain their 4,200 feedback token budget. Single-response jobs use
 6,500 output tokens maximum. The default
 report model is GPT-6.1 Sol. `pitch_reports.token_usage` records the usage, number of
 web calls and an estimated USD cost for both parts together, using standard prices

@@ -29,8 +29,8 @@ const defaults: PitchCritique = { verdict: "", verdictCategory: "keep_building",
   fatalFlaw: null, sectorConcerns: [], revisedPitch: "", thirtyDayActions: [], vcQuestions: [], glossary: [] };
 const previewKeys = new Set([...Object.keys(defaults), "aiOpportunities"]);
 
-export function parsePartialPitchReport(text: string): Partial<PitchCritique> {
-  const partial: Record<string, unknown> = {};
+export function parsePartialPitchReport(text: string, opening?: Partial<PitchCritique> | null): Partial<PitchCritique> {
+  const partial: Record<string, unknown> = { ...opening };
   let position = text.search(/\S/);
   if (text[position] !== "{") return partial;
   position++;

@@ -15,7 +15,7 @@ function setup() {
   let streaming = false, streamCheckpoint, streamWait, creationStream = false, consume;
   const background = [];
   let parseResult = () => critique;
-  let marketResponse = { status: "in_progress" }, consumeMarket;
+  let marketResponse = { status: "in_progress" }, consumeMarket, openingResponse = { status: "in_progress" }, consumeOpening;
   class Query {
     constructor() { this.filters = []; this.operation = "select"; }
     select() { return this; }
@@ -29,6 +29,7 @@ function setup() {
         if (rows.has(this.values.id)) return { data: null, error: { code: "23505" } };
         const row = { response_id: null, critique: null, pdf_path: null, generated_at: null,
           core_critique: null, research_result: null, research_response_id: null, research_status: "idle", research_cursor: -1,
+          opening_result: null, opening_response_id: null, feedback_stage: "opening",
           updated_at: new Date().toISOString(), ...this.values };
         rows.set(row.id, row);
         return { data: structuredClone(row), error: null };
@@ -50,16 +51,21 @@ function setup() {
     "@vercel/functions": { waitUntil: promise => background.push(promise) },
     "@/lib/pitch-storage": storage,
     "@/lib/pitch-report": {
-      beginPitchReport: async (instructions, input, model, part) => { calls.begin++; calls.parts.push(part); if (beginWait) await beginWait; return { id: part === "market" ? "resp_market" : "resp_test", status: "queued", streaming, streamCursor: 0,
+      beginPitchReport: async (instructions, input, model, part, opening) => { calls.begin++; calls.parts.push(part);
+        if (part === "detail") assert.deepEqual(opening, { verdict: critique.verdict, verdictCategory: critique.verdictCategory, strong: critique.strong });
+        if (beginWait) await beginWait; return { id: part === "market" ? "resp_market" : part === "opening" ? "resp_opening" : "resp_test", status: "queued", streaming, streamCursor: 0,
         ...(creationStream ? { iterator: {}, controller: { abort() {} } } : {}) }; },
-      consumePitchReportStream: async (started, save) => started.id === "resp_market" ? consumeMarket(save) : consume(save),
+      consumePitchReportStream: async (started, save) => started.id === "resp_market" ? consumeMarket(save) : started.id === "resp_opening" ? consumeOpening(save) : consume(save),
       retrievePitchReport: async responseId => { calls.retrieve++; if (responseId === "resp_market") return marketResponse;
+        if (responseId === "resp_opening") return openingResponse;
         assert.equal(responseId, "resp_test"); return response; },
       readPitchReportStream: async (responseId, cursor, text) => { calls.stream.push({ responseId, cursor, text });
         const next = structuredClone(streamCheckpoint); if (streamWait) await streamWait; return next; },
       parsePitchReport: value => { if (value.status !== "completed") throw new Error("Not completed"); return parseResult(); },
       isPitchCritique: value => value?.verdict === critique.verdict,
       parsePitchMarketReport: value => { if (value.status !== "completed") throw new Error("Research failed"); return market; },
+      parsePitchOpening: value => { if (value.status !== "completed") throw new Error("Opening failed");
+        return { verdict: critique.verdict, verdictCategory: critique.verdictCategory, strong: critique.strong }; },
       combinePitchReportUsage: reportLib.combinePitchReportUsage,
     },
     "@/lib/pitch-report-progress": progressParser,
@@ -72,8 +78,44 @@ function setup() {
     set streaming(value) { streaming = value; }, set streamCheckpoint(value) { streamCheckpoint = value; }, set streamWait(value) { streamWait = value; },
     set creationStream(value) { creationStream = value; }, set consume(value) { consume = value; },
     set parseResult(value) { parseResult = value; }, set consumeMarket(value) { consumeMarket = value; },
-    set marketResponse(value) { marketResponse = value; } };
+    set marketResponse(value) { marketResponse = value; }, set consumeOpening(value) { consumeOpening = value; },
+    set openingResponse(value) { openingResponse = value; } };
 }
+
+test("the opening is its own small response, details reuse it, and three parts merge into the same PDF", async () => {
+  const s = setup(); s.streaming = true; s.creationStream = true;
+  let endOpening, endDetail, endMarket, saveOpening;
+  const openingWait = new Promise(resolve => { endOpening = resolve; });
+  const detailWait = new Promise(resolve => { endDetail = resolve; });
+  const marketWait = new Promise(resolve => { endMarket = resolve; });
+  s.consumeOpening = async save => { saveOpening = save; await openingWait; };
+  s.consume = async () => { await detailWait; };
+  s.consumeMarket = async () => { await marketWait; };
+  await s.lib.runPitchReportJob({ ...s.request, split: true, twoChunks: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(s.calls.parts, ["opening", "market"]);
+  const opening = { verdict: critique.verdict, verdictCategory: critique.verdictCategory, strong: critique.strong };
+  await saveOpening({ cursor: 10, text: JSON.stringify({ first: opening }) });
+  assert.deepEqual((await s.lib.runPitchReportJob({ id, accessToken })).partial, opening);
+  s.openingResponse = { status: "completed", usage: { estimated_report_cost_usd: 0.01, web_search_calls: 0 } };
+  endOpening(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(s.calls.parts, ["opening", "market", "detail"]);
+  assert.equal(s.rows.get(id).opening_response_id, "resp_opening");
+  assert.equal(s.rows.get(id).response_id, "resp_test");
+  assert.deepEqual((await s.lib.runPitchReportJob({ id, accessToken })).partial, opening);
+  s.response = { status: "completed", output_text: '{"second":{}}', usage: { estimated_report_cost_usd: 0.03, web_search_calls: 0 } };
+  endDetail(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual((await s.lib.runPitchReportJob({ id, accessToken })).partial.weak, critique.weak);
+  assert.equal(s.files.size, 0);
+  s.marketResponse = { status: "completed", usage: { estimated_report_cost_usd: 0.02, web_search_calls: 2 } };
+  endMarket(); await Promise.all(s.background);
+  const final = await s.lib.runPitchReportJob({ id, accessToken });
+  assert.equal(final.pdfSaved, true);
+  assert.deepEqual(final.data, { ...critique, marketResearch: market });
+  assert.equal(s.rows.get(id).token_usage.generations, 3);
+  assert.equal(s.rows.get(id).token_usage.estimated_report_cost_usd, 0.06);
+  assert.equal(s.calls.begin, 3);
+});
 
 test("fast feedback completes before research, refresh reuses both jobs, and the complete PDF includes the market part", async () => {
   const s = setup(); s.streaming = true; s.creationStream = true;
@@ -106,6 +148,28 @@ test("fast feedback completes before research, refresh reuses both jobs, and the
   assert.equal(s.rows.get(id).token_usage.estimated_report_cost_usd, 0.07);
   assert.equal(s.rows.get(id).token_usage.web_search_calls, 2);
   assert.equal(s.calls.begin, 2, "resuming never restarts either generation");
+});
+
+test("retrying failed details keeps the published opening and completed research without generating them again", async () => {
+  const s = setup(); s.streaming = true; s.creationStream = true;
+  s.consumeOpening = async () => {};
+  s.consume = async () => {};
+  s.consumeMarket = async () => {};
+  s.openingResponse = { status: "completed" };
+  s.response = { status: "incomplete", output_text: '{"second":{}}' };
+  s.marketResponse = { status: "completed" };
+  await s.lib.runPitchReportJob({ ...s.request, split: true, twoChunks: true });
+  await new Promise(resolve => setImmediate(resolve));
+  await Promise.all(s.background);
+  assert.equal(s.rows.get(id).status, "failed");
+  assert.deepEqual(s.rows.get(id).opening_result.strong, critique.strong);
+  assert.equal(s.rows.get(id).research_status, "ready");
+  s.response = { status: "completed", output_text: '{"second":{}}' };
+  await s.lib.runPitchReportJob({ id, accessToken, retry: true });
+  await new Promise(resolve => setImmediate(resolve));
+  await Promise.all(s.background);
+  assert.deepEqual(s.calls.parts, ["opening", "market", "detail", "detail"]);
+  assert.equal((await s.lib.runPitchReportJob({ id, accessToken })).pdfSaved, true);
 });
 
 test("failed research retries only that part and preserves the two completed feedback chunks", async () => {
