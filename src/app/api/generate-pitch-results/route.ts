@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, HAIKU } from "@/lib/anthropic";
+import { generatePitchReport } from "@/lib/pitch-report";
 import type { PitchData, PitchMessage } from "@/types";
 
 export const runtime = "nodejs";
@@ -67,6 +67,7 @@ PROMPT_PARTS.push("RETURN THIS EXACT JSON STRUCTURE:");
 PROMPT_PARTS.push("");
 PROMPT_PARTS.push("{");
 PROMPT_PARTS.push('  "verdict": "2-3 sentences. Headline impression. Would you want to see this founder again? Be specific about why or why not. Direct, friendly tone.",');
+PROMPT_PARTS.push('  "verdictCategory": "ready, almost, or keep_building. Match the verdict and the evidence supplied.",');
 PROMPT_PARTS.push('  "strong": ["3-4 specific things that work. Each one a full sentence. Reference concrete points from the conversation. Friendly, specific, not generic praise."],');
 PROMPT_PARTS.push('  "weak": ["3-4 specific things that need fixing. Direct, named, with reasoning. Each a full sentence. Friend tone, not VC tone."],');
 PROMPT_PARTS.push('  "fatalFlaw": "If there is ONE thing that would kill this pitch in front of a real VC, name it directly in 1-2 sentences. If there is no fatal flaw, return null (literal JSON null, not the string).",');
@@ -133,22 +134,7 @@ export async function POST(req: NextRequest) {
       "\n\nFULL CONVERSATION TRANSCRIPT\n" + conversationLog +
       "\n\nGenerate the critique JSON now. No preamble. No code fences. Just the JSON.";
 
-    const msg = await anthropic.messages.create({
-      model: HAIKU,
-      max_tokens: 5000,
-      system: RESULTS_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    });
-
-    const textBlock = msg.content.find(function (b) { return b.type === "text"; });
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from AI");
-    }
-
-    let cleaned = textBlock.text.trim();
-    cleaned = cleaned.replace(/```json|```/g, "").trim();
-
-    const data = JSON.parse(cleaned);
+    const data = await generatePitchReport(RESULTS_PROMPT, userPrompt);
 
     function scrubDashes(value: any): any {
       if (typeof value === "string") {
