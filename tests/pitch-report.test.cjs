@@ -175,6 +175,22 @@ test("parallel research has its own small budget and cannot rewrite the pitch ve
   assert.match(s.request.instructions, /Never send private figures/);
 });
 
+test("the short opening cannot be reordered behind the detailed chunk", async t => {
+  const s = setup(t, { id: "resp_opening", status: "queued" });
+  await s.lib.beginPitchReport("Rules", "Full transcript", undefined, "opening");
+  assert.deepEqual(s.request.text.format.schema.required, ["first"]);
+  assert.equal(s.request.tools, undefined);
+  assert.equal(s.request.max_output_tokens, 1400);
+  assert.match(s.request.instructions, /under 150 words/);
+  const first = { verdict: report.verdict, verdictCategory: report.verdictCategory, strong: report.strong };
+  assert.deepEqual(s.lib.parsePitchOpening({ status: "completed", output_text: JSON.stringify({ first }) }), first);
+  await s.lib.beginPitchReport("Rules", "Full transcript", undefined, "detail", first);
+  assert.deepEqual(s.request.text.format.schema.required, ["second"]);
+  assert.equal(s.request.tools, undefined);
+  assert.equal(s.request.max_output_tokens, 3600);
+  assert.ok(s.request.instructions.includes(JSON.stringify(first)));
+});
+
 test("a pre-update results tab gets refresh instructions without starting a paid report", async () => {
   const { validReportAccess } = loadTs("src/lib/pitch-report-job.ts", {
     "@/lib/pitch-report": {}, "@/lib/pitch-report-progress": {}, "@/lib/pitch-storage": {}, "@/lib/pitch-pdf": {},

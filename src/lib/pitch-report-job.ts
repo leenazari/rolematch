@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { waitUntil } from "@vercel/functions";
 import { beginPitchReport, consumePitchReportStream, retrievePitchReport, readPitchReportStream, parsePitchReport,
-  parsePitchMarketReport, combinePitchReportUsage, isPitchCritique } from "@/lib/pitch-report";
+  parsePitchMarketReport, parsePitchOpening, combinePitchReportUsage, isPitchCritique } from "@/lib/pitch-report";
 import { parsePartialPitchReport } from "@/lib/pitch-report-progress";
 import { pitchStorageClient, savePitchPdf, PITCH_PDF_BUCKET } from "@/lib/pitch-storage";
 import { renderPitchPdf } from "@/lib/pitch-pdf";
@@ -17,9 +17,11 @@ type Job = {
   research_response_id: string | null; research_status: "idle" | "starting" | "processing" | "ready" | "failed";
   research_result: PitchCritique["marketResearch"] | null; research_usage: unknown;
   research_cursor: number; research_updated_at: string | null;
+  two_chunks: boolean; opening_response_id: string | null; opening_result: Partial<PitchCritique> | null; opening_usage: unknown;
+  feedback_stage: "opening" | "detail_starting" | "detail" | "detail_failed";
 };
 type Request = { id: string; accessToken: string; pitchData?: PitchData; conversation?: PitchMessage[];
-  instructions?: string; input?: string; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string; split?: boolean };
+  instructions?: string; input?: string; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string; split?: boolean; twoChunks?: boolean };
 
 export function validReportAccess(id: unknown, token: unknown): boolean {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) &&
@@ -42,11 +44,17 @@ async function updateJob(id: string, fields: Record<string, unknown>) {
 async function startJob(job: Job) {
   let started: Awaited<ReturnType<typeof beginPitchReport>> | undefined;
   try {
-    const response = started = await beginPitchReport(job.report_instructions, job.report_input, job.model, job.split_report ? "core" : "full");
+    const part = job.two_chunks ? (job.opening_result ? "detail" : "opening") : job.split_report ? "core" : "full";
+    const response = started = await beginPitchReport(job.report_instructions, job.report_input, job.model, part, job.opening_result || undefined);
+    const current = { ...job, response_id: response.id, ...(job.two_chunks ? {
+      opening_response_id: job.opening_result ? job.opening_response_id : response.id,
+      feedback_stage: part === "detail" ? "detail" as const : "opening" as const,
+    } : {}) };
     await updateJob(job.id, { response_id: response.id, status: "processing", streaming: response.streaming === true,
-      stream_cursor: response.streamCursor ?? -1, stream_text: "", partial_critique: null });
+      stream_cursor: response.streamCursor ?? -1, stream_text: "", partial_critique: job.opening_result || null,
+      ...(job.two_chunks ? { opening_response_id: current.opening_response_id, feedback_stage: current.feedback_stage } : {}) });
     if (response.iterator) waitUntil(Promise.allSettled([
-      continueJob(job, response), ...(job.split_report ? [startResearch({ ...job, response_id: response.id })] : []),
+      continueJob(current, response), ...(job.split_report ? [startResearch(current)] : []),
     ]));
     return pending;
   } catch (error) {
@@ -63,7 +71,8 @@ function splitPending(job: Job) {
 
 async function latestJob(job: Job): Promise<Job> {
   const { data, error } = await pitchStorageClient().from("pitch_reports").select("*")
-    .eq("id", job.id).eq("response_id", job.response_id).maybeSingle();
+    .eq("id", job.id).eq(job.two_chunks ? "opening_response_id" : "response_id",
+      job.two_chunks ? job.opening_response_id : job.response_id).maybeSingle();
   if (error || !data) throw new Error("Saved reports are temporarily unavailable. Please try again.");
   return data;
 }
@@ -72,7 +81,8 @@ async function startResearch(job: Job, retry = false) {
   let started: Awaited<ReturnType<typeof beginPitchReport>> | undefined;
   const { data, error } = await pitchStorageClient().from("pitch_reports").update({ research_status: "starting",
     research_response_id: null, research_cursor: -1, research_updated_at: new Date().toISOString(),
-  }).eq("id", job.id).eq("response_id", job.response_id).eq("research_status", retry ? "failed" : "idle")
+  }).eq("id", job.id).eq(job.two_chunks ? "opening_response_id" : "response_id",
+    job.two_chunks ? job.opening_response_id : job.response_id).eq("research_status", retry ? "failed" : "idle")
     .is("research_result", null).select("*").maybeSingle();
   if (error) throw new Error("Market research could not start yet. Please try again.");
   if (!data) return; // Another worker or retry already owns this part.
@@ -81,13 +91,15 @@ async function startResearch(job: Job, retry = false) {
     const { error: saveError } = await pitchStorageClient().from("pitch_reports").update({
       research_response_id: started.id, research_status: "processing", research_cursor: started.streamCursor,
       research_updated_at: new Date().toISOString(),
-    }).eq("id", job.id).eq("response_id", job.response_id).eq("research_status", "starting");
+    }).eq("id", job.id).eq(job.two_chunks ? "opening_response_id" : "response_id",
+      job.two_chunks ? job.opening_response_id : job.response_id).eq("research_status", "starting");
     if (saveError) throw new Error("Market research could not be saved.");
     const researchId = started.id;
     await consumePitchReportStream(started, async checkpoint => {
       const { error: progressError } = await pitchStorageClient().from("pitch_reports").update({
         research_cursor: checkpoint.cursor, research_updated_at: new Date().toISOString(),
-      }).eq("id", job.id).eq("response_id", job.response_id).eq("research_response_id", researchId)
+      }).eq("id", job.id).eq(job.two_chunks ? "opening_response_id" : "response_id",
+        job.two_chunks ? job.opening_response_id : job.response_id).eq("research_response_id", researchId)
         .eq("research_status", "processing").lt("research_cursor", checkpoint.cursor);
       if (progressError) throw new Error("Market research progress could not be saved.");
     });
@@ -101,7 +113,8 @@ async function startResearch(job: Job, retry = false) {
     // A saved response can be resumed without paying for another generation.
     // Failed creation has no response to resume, so requires an explicit retry.
     if (!started) await pitchStorageClient().from("pitch_reports").update({ research_status: "failed" })
-      .eq("id", job.id).eq("response_id", job.response_id).eq("research_status", "starting");
+      .eq("id", job.id).eq(job.two_chunks ? "opening_response_id" : "response_id",
+        job.two_chunks ? job.opening_response_id : job.response_id).eq("research_status", "starting");
   }
 }
 
@@ -117,7 +130,10 @@ async function finishResearch(job: Job, response: Awaited<ReturnType<typeof retr
     research_result: market, research_usage: response.usage || null, research_updated_at: new Date().toISOString(),
   }).eq("id", job.id).eq("research_response_id", job.research_response_id).is("research_result", null);
   if (error) throw new Error("Market research could not be saved yet. Please resume it.");
-  return finishSplitReport(await latestJob(job));
+  const { data, error: reloadError } = await pitchStorageClient().from("pitch_reports").select("*")
+    .eq("id", job.id).eq("research_response_id", job.research_response_id).maybeSingle();
+  if (reloadError || !data) throw new Error("Saved research is temporarily unavailable. Please resume it.");
+  return finishSplitReport(data);
 }
 
 async function finishSplitReport(job: Job) {
@@ -162,7 +178,7 @@ async function continueJob(job: Job, started: Awaited<ReturnType<typeof beginPit
       // A resumed reader may have advanced further. Never replace newer progress.
       const { error } = await pitchStorageClient().from("pitch_reports").update({
         stream_cursor: checkpoint.cursor, stream_text: checkpoint.text,
-        partial_critique: parsePartialPitchReport(checkpoint.text), updated_at: new Date().toISOString(),
+        partial_critique: parsePartialPitchReport(checkpoint.text, job.opening_result), updated_at: new Date().toISOString(),
       }).eq("id", job.id).eq("response_id", started.id).lt("stream_cursor", checkpoint.cursor)
         .eq("status", "processing").is("critique", null);
       if (error) throw new Error("Report progress could not be saved.");
@@ -185,7 +201,7 @@ async function reportProgress(job: Job, accessToken: string) {
   const checkpoint = await readPitchReportStream(job.response_id!, job.stream_cursor, job.stream_text);
   let current = job;
   if (checkpoint.cursor > job.stream_cursor) {
-    const partial = parsePartialPitchReport(checkpoint.text);
+    const partial = parsePartialPitchReport(checkpoint.text, job.opening_result);
     // Competing polls may replay the same events. Only one can advance this checkpoint.
     const { data, error } = await pitchStorageClient().from("pitch_reports").update({
       stream_cursor: checkpoint.cursor, stream_text: checkpoint.text, partial_critique: partial,
@@ -200,8 +216,13 @@ async function reportProgress(job: Job, accessToken: string) {
 }
 
 async function finishReport(job: Job, response: Awaited<ReturnType<typeof retrievePitchReport>>) {
+  if (job.two_chunks && job.feedback_stage === "opening") return finishOpening(job, response);
   let critique: PitchCritique;
-  try { critique = parsePitchReport(response); }
+  try {
+    critique = parsePitchReport(job.two_chunks ? { ...response,
+      output_text: JSON.stringify({ first: job.opening_result, second: JSON.parse(response.output_text).second }),
+    } : response);
+  }
   catch {
     const { error } = await pitchStorageClient().from("pitch_reports").update({ status: "failed" })
       .eq("id", job.id).eq("response_id", job.response_id).eq("status", "processing").is("critique", null);
@@ -211,7 +232,8 @@ async function finishReport(job: Job, response: Awaited<ReturnType<typeof retrie
   const generatedAt = new Date().toISOString();
   if (job.split_report) {
     const { error } = await pitchStorageClient().from("pitch_reports").update({ core_critique: critique,
-      core_usage: response.usage || null, partial_critique: critique, updated_at: generatedAt,
+      core_usage: job.two_chunks ? combinePitchReportUsage(job.opening_usage, response.usage || null, ["opening", "detail"]) : response.usage || null,
+      partial_critique: critique, updated_at: generatedAt,
     }).eq("id", job.id).eq("response_id", job.response_id).eq("status", "processing").is("core_critique", null);
     if (error) throw new Error("Your pitch feedback could not be saved yet. Please resume it.");
     return finishSplitReport(await latestJob(job));
@@ -232,6 +254,46 @@ async function finishReport(job: Job, response: Awaited<ReturnType<typeof retrie
   }
   if (!saved?.critique) return pending;
   return completeJob(saved);
+}
+
+async function finishOpening(job: Job, response: Awaited<ReturnType<typeof retrievePitchReport>>) {
+  let opening: Partial<PitchCritique>;
+  try { opening = parsePitchOpening(response); }
+  catch {
+    await pitchStorageClient().from("pitch_reports").update({ status: "failed" })
+      .eq("id", job.id).eq("response_id", job.response_id).eq("feedback_stage", "opening").is("opening_result", null);
+    throw new Error("The opening feedback could not finish. Please resume it.");
+  }
+  // Persist the first chunk and claim the detail step before starting its paid call.
+  const { data, error } = await pitchStorageClient().from("pitch_reports").update({ opening_result: opening,
+    opening_usage: response.usage || null, partial_critique: opening, feedback_stage: "detail_starting", updated_at: new Date().toISOString(),
+  }).eq("id", job.id).eq("response_id", job.response_id).eq("feedback_stage", "opening")
+    .is("opening_result", null).select("*").maybeSingle();
+  if (error) throw new Error("The first feedback chunk could not be saved yet. Please resume it.");
+  if (!data) {
+    const current = await latestJob(job);
+    return current.critique ? completeJob(current) : splitPending(current);
+  }
+  waitUntil(startDetails(data));
+  return splitPending(data);
+}
+
+async function startDetails(job: Job) {
+  let started: Awaited<ReturnType<typeof beginPitchReport>> | undefined;
+  try {
+    started = await beginPitchReport(job.report_instructions, job.report_input, job.model, "detail", job.opening_result || undefined);
+    const { error } = await pitchStorageClient().from("pitch_reports").update({ response_id: started.id,
+      feedback_stage: "detail", streaming: true, stream_cursor: started.streamCursor, stream_text: "",
+      updated_at: new Date().toISOString(),
+    }).eq("id", job.id).eq("opening_response_id", job.opening_response_id).eq("feedback_stage", "detail_starting");
+    if (error) throw new Error("The detailed feedback could not be saved yet.");
+    await continueJob({ ...job, response_id: started.id, feedback_stage: "detail" }, started);
+  } catch (error) {
+    started?.controller.abort();
+    console.error("pitch-report details interrupted", { name: (error as Error).name });
+    await pitchStorageClient().from("pitch_reports").update({ status: "failed", feedback_stage: "detail_failed" })
+      .eq("id", job.id).eq("opening_response_id", job.opening_response_id).eq("feedback_stage", "detail_starting");
+  }
 }
 
 async function completeJob(job: Job) {
@@ -265,6 +327,7 @@ export async function runPitchReportJob(request: Request) {
       report_input: request.input, model: request.existingCritique ? "previously_generated" : process.env.OPENAI_PITCH_REPORT_MODEL || "gpt-6.1-sol",
       status: request.existingCritique ? "processing" : "starting", critique: request.existingCritique || null,
       split_report: !request.existingCritique && request.split === true,
+      two_chunks: !request.existingCritique && request.split === true && request.twoChunks === true,
       generated_at: request.existingCritique ? (request.generatedAt && !isNaN(Date.parse(request.generatedAt))
         ? new Date(request.generatedAt).toISOString() : new Date().toISOString()) : null,
     }).select("*").single();
@@ -287,6 +350,13 @@ export async function runPitchReportJob(request: Request) {
       await advanceResearch(job);
       job = await latestJob(job);
       if (job.core_critique) return finishSplitReport(job);
+      if (job.two_chunks && job.feedback_stage === "detail_starting") {
+        if (Date.now() - Date.parse(job.updated_at) > 90_000) {
+          await pitchStorageClient().from("pitch_reports").update({ status: "failed", feedback_stage: "detail_failed" })
+            .eq("id", job.id).eq("feedback_stage", "detail_starting").eq("updated_at", job.updated_at);
+        }
+        return splitPending(job);
+      }
       if (Date.now() - Date.parse(job.updated_at) < 15_000) return splitPending(job);
     }
   }
@@ -294,7 +364,7 @@ export async function runPitchReportJob(request: Request) {
     if (!request.retry) throw new Error("The report could not be completed. Please try generating it again.");
     // Only one concurrent retry may claim this job.
     const { data, error } = await pitchStorageClient().from("pitch_reports").update({ status: "starting",
-      response_id: null, stream_cursor: -1, stream_text: "", partial_critique: null,
+      response_id: null, stream_cursor: -1, stream_text: "", partial_critique: job.opening_result || null,
       updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", "failed").select("*").maybeSingle();
     if (error) throw new Error("The report could not restart yet. Please try again.");
     return data ? startJob(data) : pending;
