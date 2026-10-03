@@ -1,8 +1,8 @@
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 export type ReportAccess = { reportId: string; accessToken: string };
-export function reportAccess(): ReportAccess {
-  const stored = sessionStorage.getItem("pitchperfect_report_access");
+export function reportAccess(storageKey = "pitchperfect_report_access"): ReportAccess {
+  const stored = sessionStorage.getItem(storageKey);
   if (stored) {
     try {
       const access = JSON.parse(stored);
@@ -13,8 +13,8 @@ export function reportAccess(): ReportAccess {
   }
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const access = { reportId: crypto.randomUUID(), accessToken: Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("") };
-  sessionStorage.setItem("pitchperfect_report_access", JSON.stringify(access));
-  sessionStorage.setItem("pitchperfect_pdf_saved", "false");
+  sessionStorage.setItem(storageKey, JSON.stringify(access));
+  if (storageKey === "pitchperfect_report_access") sessionStorage.setItem("pitchperfect_pdf_saved", "false");
   return access;
 }
 function pause(signal: AbortSignal) {
@@ -27,9 +27,9 @@ function pause(signal: AbortSignal) {
 }
 
 export async function loadPitchReport(pitchData: PitchData, conversation: PitchMessage[], options: {
-  signal: AbortSignal; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string;
+  signal: AbortSignal; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string; access?: ReportAccess;
 }) {
-  const access = reportAccess();
+  const access = options.access || reportAccess();
   const started = Date.now();
   let first = true;
   let failures = 0;

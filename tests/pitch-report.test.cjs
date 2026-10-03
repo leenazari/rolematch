@@ -43,7 +43,12 @@ test("OpenAI report uses strict schema and the complete existing report format",
   assert.equal(s.request.instructions, "Report instructions");
   assert.equal(s.request.store, false);
   assert.equal(s.request.text.format.strict, true);
-  assert.deepEqual(s.request.text.format.schema.required.sort(), Object.keys(report).sort());
+  assert.deepEqual(s.request.text.format.schema.required.sort(), [...Object.keys(report), "aiOpportunities", "marketResearch"].sort());
+  assert.equal(s.request.max_output_tokens, 6500);
+  assert.equal(s.request.max_tool_calls, 2);
+  assert.equal(s.request.tools[0].type, "web_search");
+  assert.equal(s.request.tools[0].search_context_size, "low");
+  assert.equal(s.request.tool_choice, "required");
   assert.equal(s.options.timeout, 45000);
   assert.equal(s.options.maxRetries, 0);
 });
@@ -95,6 +100,15 @@ test("pitch results route passes the pitch and transcript to OpenAI and scrubs d
   assert.match(s.request.instructions, /verdictCategory/);
   assert.match(s.request.input, /CLOSING STATEMENT\nNot present/);
   assert.match(s.request.instructions, /without inventing a close or penalising/);
+  assert.match(s.request.instructions, /founder's actual examples/);
+  assert.match(s.request.instructions, /maximum of 2 tool calls/);
+  assert.match(s.request.instructions, /Never invent links, prices, market sizes/);
+});
+
+test("oversized report input is rejected before a paid generation", async t => {
+  const s = setup(t);
+  await assert.rejects(s.lib.generatePitchReport("Instructions", "x".repeat(s.lib.MAX_REPORT_INPUT_CHARS + 1)), /report budget/);
+  assert.equal(s.request, undefined);
 });
 
 test("closing statement is explicitly assessed in readiness, strengths and weaknesses", async t => {

@@ -66,3 +66,21 @@ test("valid completed report credentials and the saved PDF flag are preserved", 
   assert.deepEqual(loadTs("src/lib/pitch-report-client.ts").reportAccess(), access);
   assert.equal(storage.get("pitchperfect_pdf_saved"), "true");
 });
+
+test("adding insights resumes its own job without replacing access to the current report", async t => {
+  const original = { sessionStorage: global.sessionStorage, fetch: global.fetch };
+  const storage = new Map();
+  global.sessionStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) };
+  t.after(() => Object.assign(global, original));
+  const client = loadTs("src/lib/pitch-report-client.ts");
+  const current = client.reportAccess(); storage.set("pitchperfect_pdf_saved", "true");
+  const upgrade = client.reportAccess("pitchperfect_insights_access");
+  assert.notEqual(upgrade.reportId, current.reportId);
+  assert.deepEqual(client.reportAccess("pitchperfect_insights_access"), upgrade);
+  let requested;
+  global.fetch = async (_, options) => { requested = JSON.parse(options.body); return { json: async () => ({ ok: true, status: "completed", data: {} }) }; };
+  await client.loadPitchReport({ companyName: "Tilly" }, [], { signal: new AbortController().signal, access: upgrade });
+  assert.equal(requested.reportId, upgrade.reportId);
+  assert.deepEqual(client.reportAccess(), current);
+  assert.equal(storage.get("pitchperfect_pdf_saved"), "true");
+});
