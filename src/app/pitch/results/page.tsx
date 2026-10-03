@@ -164,6 +164,7 @@ export default function PitchResultsPage() {
       const pd = JSON.parse(dataStr);
       const conv = JSON.parse(convStr);
       setPitchData(pd);
+      reportAccess();
 
       const cached = sessionStorage.getItem("pitchperfect_critique");
       const cachedTime = sessionStorage.getItem("pitchperfect_generated_at");

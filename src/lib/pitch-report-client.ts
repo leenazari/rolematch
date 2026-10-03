@@ -3,10 +3,18 @@ import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 export type ReportAccess = { reportId: string; accessToken: string };
 export function reportAccess(): ReportAccess {
   const stored = sessionStorage.getItem("pitchperfect_report_access");
-  if (stored) return JSON.parse(stored);
+  if (stored) {
+    try {
+      const access = JSON.parse(stored);
+      if (access && typeof access.reportId === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(access.reportId) &&
+        typeof access.accessToken === "string" && /^[0-9a-f]{64}$/i.test(access.accessToken)) return access;
+    } catch { /* Keep the saved conversation and replace only unusable report credentials. */ }
+  }
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const access = { reportId: crypto.randomUUID(), accessToken: Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("") };
   sessionStorage.setItem("pitchperfect_report_access", JSON.stringify(access));
+  sessionStorage.setItem("pitchperfect_pdf_saved", "false");
   return access;
 }
 function pause(signal: AbortSignal) {
