@@ -1,4 +1,4 @@
-import { renderToStream, Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { renderToStream, Document, Page, Text, View, Link, StyleSheet } from "@react-pdf/renderer";
 import { createElement } from "react";
 import type { PitchData, PitchCritique } from "@/types";
 
@@ -404,6 +404,38 @@ function buildPdfDocument(pitchData: PitchData, critique: PitchCritique, generat
   ];
 
   const glossaryPage = renderGlossary();
+  if (critique.aiOpportunities?.length) {
+    pages.push(createElement(Page, { size: "A4", style: styles.page, key: "ai" },
+      createElement(Text, { style: styles.sectionHeader }, "Where AI could help your business"),
+      createElement(Text, { style: styles.prepText }, "Practical pilots based on the business you described."),
+      ...critique.aiOpportunities.map((item, i) => createElement(View, { key: "ai-" + i, style: { marginTop: 18 }, wrap: false },
+        createElement(Text, { style: styles.questionText }, item.businessArea),
+        createElement(Text, { style: styles.bulletItem }, item.pitchEvidence),
+        ...[["How AI could help", item.workflow], ["First step", item.firstStep],
+          ["How to measure it", item.successMeasure], ["Human check", item.humanCheck]].map(([label, value]) =>
+          createElement(Text, { key: label, style: styles.bulletItem }, label + ": " + value)))),
+      renderFooter()));
+  }
+  const market = critique.marketResearch;
+  if (market) {
+    pages.push(createElement(Page, { size: "A4", style: styles.page, key: "market" },
+      createElement(Text, { style: styles.sectionHeader }, "Market and competitors"),
+      createElement(Text, { style: styles.prepText }, market.scope + (market.checkedAt ? " | Checked: " + formatTimestamp(market.checkedAt) : "")),
+      createElement(Text, { style: { ...styles.bulletItem, marginTop: 12 } }, market.summary),
+      ...market.competitors.map((item, i) => createElement(View, { key: "competitor-" + i, style: { marginTop: 14 }, wrap: false },
+        createElement(Text, { style: styles.questionText }, item.name),
+        createElement(Text, { style: styles.bulletItem }, item.offering),
+        createElement(Text, { style: styles.bulletItem }, "Why they overlap: " + item.overlap),
+        createElement(Text, { style: styles.bulletItem }, "A difference to test: " + item.differenceToTest),
+        ...item.sourceUrls.map(url => createElement(Link, { key: url, src: url, style: { fontSize: 8, color: "#7c3aed", marginBottom: 3 } }, url)))),
+      market.nextSteps.length ? createElement(View, { style: { marginTop: 16 } },
+        createElement(Text, { style: styles.questionText }, "What to check next"),
+        ...market.nextSteps.map((step, i) => createElement(Text, { key: "check-" + i, style: styles.bulletItem }, (i + 1) + ". " + step))) : null,
+      createElement(Text, { style: { ...styles.prepText, marginTop: 12 } }, market.limitations),
+      ...market.sources.map((source, i) => createElement(Link, { key: "source-" + i, src: source.url,
+        style: { fontSize: 8, color: "#7c3aed", marginTop: 5 } }, source.title + ": " + source.url)),
+      renderFooter()));
+  }
   if (glossaryPage) pages.push(glossaryPage);
 
   return createElement(Document, {}, ...pages);

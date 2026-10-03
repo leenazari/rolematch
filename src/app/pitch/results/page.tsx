@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { loadPitchReport, reportAccess } from "@/lib/pitch-report-client";
+import { loadPitchReport, reportAccess, type ReportAccess } from "@/lib/pitch-report-client";
+import { ReportInsights } from "./report-insights";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 function formatTimestamp(iso: string): string {
@@ -151,6 +152,8 @@ export default function PitchResultsPage() {
   const requestRef = useRef<AbortController | null>(null);
   const [saveWarning, setSaveWarning] = useState("");
   const [savingPdf, setSavingPdf] = useState(false);
+  const [enhancingReport, setEnhancingReport] = useState(false);
+  const [insightsError, setInsightsError] = useState("");
   const [generatedAt, setGeneratedAt] = useState<string>("");
 
   useEffect(function () {
@@ -184,14 +187,16 @@ export default function PitchResultsPage() {
     return () => requestRef.current?.abort();
   }, [router]);
 
-  async function generateCritique(pd: PitchData, conv: PitchMessage[], retry = false, existingCritique?: PitchCritique, cachedTime?: string) {
+  async function generateCritique(pd: PitchData, conv: PitchMessage[], retry = false, existingCritique?: PitchCritique, cachedTime?: string, upgradeAccess?: ReportAccess) {
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
     setSavingPdf(true);
+    if (upgradeAccess) { setEnhancingReport(true); setInsightsError(""); }
     try {
-      const result = await loadPitchReport(pd, conv, { signal: controller.signal, retry, existingCritique, generatedAt: cachedTime });
+      const result = await loadPitchReport(pd, conv, { signal: controller.signal, retry, existingCritique, generatedAt: cachedTime, access: upgradeAccess });
       if (controller.signal.aborted) return;
+      if (upgradeAccess) sessionStorage.setItem("pitchperfect_report_access", JSON.stringify(upgradeAccess));
       setCritique(result.data);
       setGeneratedAt(result.generatedAt);
       setSaveWarning(result.saveWarning || "");
@@ -201,10 +206,11 @@ export default function PitchResultsPage() {
     } catch (e) {
       if (controller.signal.aborted) return;
       const message = e instanceof Error ? e.message : "Something went wrong. Please try again.";
-      if (existingCritique) setSaveWarning("Your report is ready, but its PDF copy has not saved yet. Please retry saving.");
+      if (upgradeAccess) setInsightsError(message);
+      else if (existingCritique) setSaveWarning("Your report is ready, but its PDF copy has not saved yet. Please retry saving.");
       else setError(message);
     } finally {
-      if (!controller.signal.aborted) setSavingPdf(false);
+      if (!controller.signal.aborted) { setSavingPdf(false); if (upgradeAccess) setEnhancingReport(false); }
     }
   }
 
@@ -431,6 +437,18 @@ export default function PitchResultsPage() {
             })}
           </div>
         </section>
+
+        <ReportInsights critique={critique} />
+        {critique.aiOpportunities === undefined || !critique.marketResearch ? <section className="rounded-2xl bg-purple-50 border border-purple-200 p-6 mb-8">
+          <h2 className="font-semibold text-slate-900 mb-2">Add practical AI advice and a market check</h2>
+          <p className="text-sm text-slate-600 mb-4">Use your saved conversation to add business-specific AI pilots and current competitor research. Your existing report stays available while these prepare.</p>
+          <button disabled={savingPdf || enhancingReport} className="rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+            const conversation = sessionStorage.getItem("pitchperfect_conversation");
+            if (pitchData && conversation) generateCritique(pitchData, JSON.parse(conversation), true, undefined, undefined,
+              reportAccess("pitchperfect_insights_access"));
+          }}>{enhancingReport ? "Adding AI and market insights..." : "Add AI and market insights"}</button>
+          {insightsError ? <p role="alert" className="text-sm text-red-700 mt-3">{insightsError}</p> : null}
+        </section> : null}
 
         {generatedAt ? (
           <p className="text-xs text-slate-400 text-center mt-3">

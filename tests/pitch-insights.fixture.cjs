@@ -1,0 +1,15 @@
+module.exports = {
+  verdict: "There is evidence here, but the pitch needs work.", verdictCategory: "almost",
+  strong: ["Customers are paying."], weak: ["Validate the proposed differentiation."], fatalFlaw: null,
+  sectorConcerns: [], revisedPitch: "I built venue software.", thirtyDayActions: ["Speak to five venue managers."],
+  vcQuestions: [{ question: "What makes this defensible?", prepGuidance: "Use customer evidence." }], glossary: [],
+  aiOpportunities: [{ businessArea: "Customer support", pitchEvidence: "You described repeated onboarding questions from pub managers.",
+    workflow: "Draft support replies from your approved onboarding notes.", firstStep: "Try twenty anonymised tickets with the founder reviewing each draft.",
+    successMeasure: "Pilot target: cut drafting time by a quarter with no incorrect replies.", humanCheck: "A person approves every reply before it is sent." }],
+  marketResearch: { scope: "UK hospitality point of sale", summary: "Square offers a hospitality alternative.",
+    competitors: [{ name: "Square", offering: "Point of sale tools for restaurants.", overlap: "Venue owners may compare the two products.",
+      differenceToTest: "Ask customers whether your specific reporting workflow saves them more time.",
+      sourceUrls: ["https://squareup.com/gb/en/point-of-sale/restaurants"] }],
+    nextSteps: ["Compare the reporting workflow with five venue owners."], limitations: "A short scan, not an exhaustive market review.",
+    sources: [{ title: "Square for Restaurants", url: "https://squareup.com/gb/en/point-of-sale/restaurants" }] },
+};

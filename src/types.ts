@@ -83,4 +83,15 @@ export type PitchCritique = {
   thirtyDayActions: string[];
   vcQuestions: { question: string; prepGuidance: string }[];
   glossary: { term: string; definition: string }[];
+  aiOpportunities?: {
+    businessArea: string; pitchEvidence: string; workflow: string;
+    firstStep: string; successMeasure: string; humanCheck: string;
+  }[];
+  marketResearch?: {
+    scope: string; summary: string;
+    competitors: { name: string; offering: string; overlap: string; differenceToTest: string; sourceUrls: string[] }[];
+    nextSteps: string[]; limitations: string;
+    sources: { title: string; url: string }[];
+    checkedAt?: string;
+  };
 };

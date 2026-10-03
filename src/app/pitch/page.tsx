@@ -102,6 +102,7 @@ export default function PitchPage() {
     sessionStorage.removeItem("pitchperfect_critique");
     sessionStorage.removeItem("pitchperfect_generated_at");
     sessionStorage.removeItem("pitchperfect_report_access");
+    sessionStorage.removeItem("pitchperfect_insights_access");
     sessionStorage.removeItem("pitchperfect_pdf_saved");
 
     router.push("/pitch/results");
@@ -168,7 +169,7 @@ export default function PitchPage() {
             data={pitchData}
             onConfirm={(finalData) => {
               for (const key of ["pitchperfect_conversation", "pitchperfect_critique", "pitchperfect_generated_at",
-                "pitchperfect_report_access", "pitchperfect_pdf_saved", "pitchperfect_started_at", "pitchperfect_finished_at"]) {
+                "pitchperfect_report_access", "pitchperfect_insights_access", "pitchperfect_pdf_saved", "pitchperfect_started_at", "pitchperfect_finished_at"]) {
                 sessionStorage.removeItem(key);
               }
               sessionStorage.setItem("pitchperfect_data", JSON.stringify(finalData));
