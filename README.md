@@ -4,7 +4,7 @@ Pitch Perfect is at `/pitch` in this Next.js app.
 
 ## Setup
 
-1. Run `npm install`.
+1. Use Node.js 24 (matching the Vercel runtime pinned in `package.json`) and run `npm install`.
 2. Copy `.env.example` to `.env.local` and set the API keys.
 3. Run `npm run dev`.
 
