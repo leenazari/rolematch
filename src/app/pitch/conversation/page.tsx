@@ -3,12 +3,12 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { track } from "@vercel/analytics";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { usePitchAudioRecorder } from "@/hooks/usePitchAudioRecorder";
 import { usePitchSpeechSynthesis } from "@/hooks/usePitchSpeechSynthesis";
 import VoiceOrb from "@/components/VoiceOrb";
 import type { PitchData, PitchMessage } from "@/types";
 
-type Phase = "idle" | "ai_speaking" | "listening" | "finalising" | "reviewing" | "thinking";
+type Phase = "idle" | "ai_speaking" | "starting" | "listening" | "finalising" | "reviewing" | "thinking";
 
 const INTRO_VIDEO_URL = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/pitchperfect.mp4";
 
@@ -27,8 +27,21 @@ export default function PitchConversationPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const trackedQuestionsRef = useRef<Set<number>>(new Set());
 
-  const { supported: voiceSupported, listening, transcript, interim, start, stop, hardReset } = useSpeechRecognition();
+  const {
+    supported: voiceSupported, status: recordingStatus, error: voiceError, canRetry,
+    start, stop, retry, reset: hardReset,
+  } = usePitchAudioRecorder({
+    onComplete(text) {
+      setDraftAnswer(prev => (prev ? prev + " " + text : text).trim());
+      setPhase("reviewing");
+    },
+    onError() { setPhase("reviewing"); },
+  });
   const { speak, speaking, stopSpeaking } = usePitchSpeechSynthesis();
+
+  useEffect(() => {
+    if (recordingStatus === "transcribing") setPhase("finalising");
+  }, [recordingStatus]);
 
   useEffect(function () {
     const stored = sessionStorage.getItem("pitchperfect_data");
@@ -142,32 +155,20 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
     }
   }
 
-  function handleStartListening() {
+  async function handleStartListening() {
     if (speaking) stopSpeaking();
-    hardReset();
-    setTimeout(function () {
-      start();
-      setPhase("listening");
-    }, 100);
+    setPhase("starting");
+    if (await start(pitchData?.companyName)) setPhase("listening");
   }
 
-  async function handleStopListening() {
+  function handleStopListening() {
     setPhase("finalising");
-    const final = await stop();
-    const captured = (final || "").trim();
-    setDraftAnswer(function (prev) {
-      const combined = prev ? prev + " " + captured : captured;
-      return combined.trim();
-    });
-    setPhase("reviewing");
+    stop();
   }
 
-  function handleResumeListening() {
-    hardReset();
-    setTimeout(function () {
-      start();
-      setPhase("listening");
-    }, 100);
+  async function handleResumeListening() {
+    setPhase("starting");
+    if (await start(pitchData?.companyName)) setPhase("listening");
   }
 
   function handleClearAndRetry() {
@@ -178,6 +179,7 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
 
   async function handleSendAnswer() {
     if (!draftAnswer.trim()) return;
+    hardReset();
     const userMsg: PitchMessage = { role: "user", text: draftAnswer.trim() };
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
@@ -193,22 +195,6 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
     );
   }
 
-  if (!voiceSupported) {
-    return (
-      <main className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-md">
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Voice not supported</h1>
-          <p className="text-slate-600 mb-6">
-            This browser doesn't support voice input. Please open Pitch Perfect in Chrome or Edge on a desktop or Android device.
-          </p>
-          <button onClick={function () { router.push("/"); }} className="text-purple-600 underline">
-            Back to home
-          </button>
-        </div>
-      </main>
-    );
-  }
-
   const latestAi = [...messages].reverse().find(function (m) { return m.role === "ai"; });
   const reversedMessages = [...messages].reverse();
 
@@ -216,17 +202,8 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
     phase === "ai_speaking" ? "speaking" :
     phase === "listening" ? "listening" :
     phase === "thinking" ? "thinking" :
-    phase === "finalising" ? "thinking" :
+    phase === "finalising" || phase === "starting" ? "thinking" :
     "idle";
-
-  let liveAnswerText = draftAnswer;
-  if (phase === "listening") {
-    const parts: string[] = [];
-    if (draftAnswer) parts.push(draftAnswer);
-    if (transcript) parts.push(transcript);
-    const base = parts.join(" ").trim();
-    liveAnswerText = base + (interim ? (base ? " " : "") + interim : "");
-  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
@@ -337,13 +314,25 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
                   )}
                 </div>
                 <textarea
-                  value={liveAnswerText}
+                  value={draftAnswer}
                   readOnly={phase === "listening" || phase === "finalising"}
                   onChange={function (e) { setDraftAnswer(e.target.value); }}
-                  placeholder={phase === "listening" ? "Speak your answer..." : "Type your answer here, or use Add more to dictate."}
+                  placeholder={phase === "listening" ? "Recording your answer. Your words will appear after you press Stop." : "Type your answer here, or use Add more to dictate."}
                   className="w-full p-3 text-base text-slate-900 leading-relaxed border border-slate-200 rounded-lg focus:border-purple-400 focus:outline-none resize-none min-h-[120px] bg-white"
                   rows={5}
                 />
+                {phase === "listening" ? (
+                  <p className="mt-2 text-sm text-purple-700">Speak naturally, then press Stop. Up to three minutes per recording.</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {!introPlaying && voiceError ? (
+              <div role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+                <p>{voiceError}</p>
+                {canRetry && phase === "reviewing" ? (
+                  <button onClick={retry} className="mt-2 font-semibold underline">Retry transcription</button>
+                ) : null}
               </div>
             ) : null}
 
@@ -372,27 +361,37 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
                     disabled
                     className="px-8 py-4 bg-amber-100 text-amber-700 rounded-2xl font-medium cursor-not-allowed"
                   >
-                    Capturing your last words...
+                    Transcribing your answer...
                   </button>
                 ) : null}
 
+                {phase === "starting" ? (
+                  <>
+                    <span className="px-6 py-4 text-slate-500">Opening microphone...</span>
+                    <button onClick={handleClearAndRetry} className="text-purple-600 underline">Cancel</button>
+                  </>
+                ) : null}
+
                 {phase === "idle" && !finished && !draftAnswer ? (
-                  <button
+                  <>
+                  {voiceSupported ? <button
                     onClick={handleStartListening}
                     className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 font-medium shadow-lg shadow-purple-200"
                   >
                     Tap to answer
-                  </button>
+                  </button> : null}
+                  <button onClick={() => setPhase("reviewing")} className="px-6 py-4 text-purple-700 underline">Type my answer</button>
+                  </>
                 ) : null}
 
                 {phase === "idle" && !finished && draftAnswer ? (
                   <>
-                    <button
+                    {voiceSupported ? <button
                       onClick={handleResumeListening}
                       className="px-6 py-4 bg-white border-2 border-purple-300 text-purple-700 rounded-2xl hover:bg-purple-50 font-medium"
                     >
                       Add more
-                    </button>
+                    </button> : null}
                     <button
                       onClick={handleClearAndRetry}
                       className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"
@@ -420,12 +419,12 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
 
                 {phase === "reviewing" ? (
                   <>
-                    <button
+                    {voiceSupported ? <button
                       onClick={handleResumeListening}
                       className="px-6 py-4 bg-white border-2 border-purple-300 text-purple-700 rounded-2xl hover:bg-purple-50 font-medium"
                     >
                       Add more
-                    </button>
+                    </button> : null}
                     <button
                       onClick={handleClearAndRetry}
                       className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"

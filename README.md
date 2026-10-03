@@ -14,6 +14,16 @@ before deploying this change. Set `OPENAI_PITCH_REPORT_MODEL` to override the re
 model with a Responses/Structured Outputs model that supports low reasoning effort.
 The other existing AI endpoints still require `ANTHROPIC_API_KEY`.
 
+Pitch Perfect records each answer with `MediaRecorder`, then sends the completed
+audio to `/api/transcribe-pitch-audio` after Stop. It uses `gpt-4o-transcribe` and
+the same server-side `OPENAI_API_KEY`; the key needs Audio transcription permission.
+Set `OPENAI_PITCH_TRANSCRIPTION_MODEL` to override the model. This avoids Android
+browser speech engines that emit repeated, cumulative recognition fragments.
+Each recording is limited to three minutes and 3.5 MB. Audio is not saved by this
+app and is released after transcription, Clear, a new recording, or navigation.
+Failed uploads can be retried while the page remains open. Text appears after
+Stop, and users can edit it, add another recording, or type their whole answer.
+
 ## Verification
 
 - `npm test` runs speech-result and report-route regression tests with mocked speech
