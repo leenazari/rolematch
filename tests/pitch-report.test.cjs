@@ -80,7 +80,10 @@ test("invalid report fields are rejected before reaching the page or PDF", async
 
 test("pitch results route passes the pitch and transcript to OpenAI and scrubs dashes", async t => {
   const s = setup(t, { status: "completed", output_text: JSON.stringify({ ...report, verdict: "Clear pitch—needs numbers." }) });
-  const { POST } = loadTs("src/app/api/generate-pitch-results/route.ts", { "@/lib/pitch-report": s.lib });
+  const { POST } = loadTs("src/app/api/generate-pitch-results/route.ts", { "@/lib/pitch-report-job": {
+    validReportAccess: () => true,
+    runPitchReportJob: async ({ instructions, input }) => ({ ok: true, status: "completed", data: await s.lib.generatePitchReport(instructions, input) }),
+  } });
   const pitchData = { companyName: "Tilly", sector: "Fintech", stage: "early revenue", traction: "47 customers", ask: "£750k" };
   const response = await POST({ json: async () => ({ pitchData, conversation: [{ role: "user", text: "We ran a trial in one of their pubs." }] }) });
   const json = await response.json();
@@ -96,7 +99,10 @@ test("pitch results route passes the pitch and transcript to OpenAI and scrubs d
 
 test("closing statement is explicitly assessed in readiness, strengths and weaknesses", async t => {
   const s = setup(t);
-  const { POST } = loadTs("src/app/api/generate-pitch-results/route.ts", { "@/lib/pitch-report": s.lib });
+  const { POST } = loadTs("src/app/api/generate-pitch-results/route.ts", { "@/lib/pitch-report-job": {
+    validReportAccess: () => true,
+    runPitchReportJob: async ({ instructions, input }) => ({ ok: true, status: "completed", data: await s.lib.generatePitchReport(instructions, input) }),
+  } });
   const closing = "This is the right moment because costs are rising. Investment funds multi-site tools. Our difference is integrated payments and margins.";
   const response = await POST({ json: async () => ({ pitchData: { companyName: "Tilly" }, conversation: [
     { role: "user", text: "Our earlier funding answer.", questionNumber: 6 },
@@ -110,4 +116,15 @@ test("closing statement is explicitly assessed in readiness, strengths and weakn
   assert.match(s.request.instructions, /observation about the closing pitch in strong or weak/);
   assert.match(s.request.instructions, /Do not let a confident close override weak evidence/);
   assert.match(s.request.instructions, /do not claim to know its duration/);
+});
+
+
+test("background reports return immediately and are retrieved by their saved response ID", async t => {
+  const s = setup(t, { id: "resp_background", status: "queued" });
+  const started = await s.lib.beginPitchReport("Instructions", "Transcript");
+  assert.equal(started.id, "resp_background");
+  assert.equal(s.request.background, true);
+  assert.equal(s.request.store, true);
+  assert.equal(s.options.timeout, 25000);
+  assert.equal(s.options.maxRetries, 0);
 });

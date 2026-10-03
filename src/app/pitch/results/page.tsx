@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { loadPitchReport, reportAccess } from "@/lib/pitch-report-client";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 function formatTimestamp(iso: string): string {
@@ -121,7 +122,7 @@ function LoadingState(props: { companyName: string }) {
         </p>
 
         <p className="text-xs text-slate-400 mt-6">
-          This usually takes about thirty seconds.
+          Your feedback is preparing. You can refresh this page to resume it.
         </p>
       </div>
 
@@ -147,6 +148,9 @@ export default function PitchResultsPage() {
   const [critique, setCritique] = useState<PitchCritique | null>(null);
   const [error, setError] = useState("");
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const requestRef = useRef<AbortController | null>(null);
+  const [saveWarning, setSaveWarning] = useState("");
+  const [savingPdf, setSavingPdf] = useState(false);
   const [generatedAt, setGeneratedAt] = useState<string>("");
 
   useEffect(function () {
@@ -166,34 +170,40 @@ export default function PitchResultsPage() {
       if (cached) {
         setCritique(JSON.parse(cached));
         if (cachedTime) setGeneratedAt(cachedTime);
-        return;
+        if (sessionStorage.getItem("pitchperfect_pdf_saved") !== "true") {
+          generateCritique(pd, conv, false, JSON.parse(cached), cachedTime || undefined);
+        }
+        return () => requestRef.current?.abort();
       }
 
       generateCritique(pd, conv);
     } catch (e) {
       router.push("/pitch");
     }
+    return () => requestRef.current?.abort();
   }, [router]);
 
-  async function generateCritique(pd: PitchData, conv: PitchMessage[]) {
+  async function generateCritique(pd: PitchData, conv: PitchMessage[], retry = false, existingCritique?: PitchCritique, cachedTime?: string) {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setSavingPdf(true);
     try {
-      const res = await fetch("/api/generate-pitch-results", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pitchData: pd, conversation: conv }),
-      });
-      const json = await res.json();
-      if (!json.ok) {
-        setError(json.error || "Could not generate critique.");
-        return;
-      }
-      setCritique(json.data);
-      sessionStorage.setItem("pitchperfect_critique", JSON.stringify(json.data));
-      const now = new Date().toISOString();
-      sessionStorage.setItem("pitchperfect_generated_at", now);
-      setGeneratedAt(now);
+      const result = await loadPitchReport(pd, conv, { signal: controller.signal, retry, existingCritique, generatedAt: cachedTime });
+      if (controller.signal.aborted) return;
+      setCritique(result.data);
+      setGeneratedAt(result.generatedAt);
+      setSaveWarning(result.saveWarning || "");
+      sessionStorage.setItem("pitchperfect_critique", JSON.stringify(result.data));
+      sessionStorage.setItem("pitchperfect_generated_at", result.generatedAt);
+      sessionStorage.setItem("pitchperfect_pdf_saved", String(result.pdfSaved));
     } catch (e) {
-      setError("Something went wrong. Please refresh to try again.");
+      if (controller.signal.aborted) return;
+      const message = e instanceof Error ? e.message : "Something went wrong. Please try again.";
+      if (existingCritique) setSaveWarning("Your report is ready, but its PDF copy has not saved yet. Please retry saving.");
+      else setError(message);
+    } finally {
+      if (!controller.signal.aborted) setSavingPdf(false);
     }
   }
 
@@ -204,7 +214,8 @@ export default function PitchResultsPage() {
       const res = await fetch("/api/generate-pitch-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pitchData, critique, generatedAt }),
+        body: JSON.stringify(sessionStorage.getItem("pitchperfect_pdf_saved") === "true"
+          ? reportAccess() : { pitchData, critique, generatedAt }),
       });
       if (!res.ok) {
         setError("PDF download failed. Please try again.");
@@ -242,7 +253,7 @@ export default function PitchResultsPage() {
                 const dataStr = sessionStorage.getItem("pitchperfect_data");
                 const convStr = sessionStorage.getItem("pitchperfect_conversation");
                 if (dataStr && convStr) {
-                  generateCritique(JSON.parse(dataStr), JSON.parse(convStr));
+                  generateCritique(JSON.parse(dataStr), JSON.parse(convStr), true);
                 } else {
                   router.push("/pitch");
                 }
@@ -288,6 +299,16 @@ export default function PitchResultsPage() {
             {downloadingPdf ? "Building PDF..." : "Download as PDF"}
           </button>
         </div>
+
+        {saveWarning ? (
+          <div role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+            <p>{saveWarning}</p>
+            <button disabled={savingPdf} className="mt-2 font-semibold underline disabled:opacity-50" onClick={() => {
+              const conversation = sessionStorage.getItem("pitchperfect_conversation");
+              if (pitchData && conversation) generateCritique(pitchData, JSON.parse(conversation), false, critique, generatedAt);
+            }}>{savingPdf ? "Saving PDF..." : "Retry saving PDF"}</button>
+          </div>
+        ) : null}
 
         <section className="bg-purple-50 border-l-4 border-purple-600 rounded-r-2xl p-6 mb-8">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-3">

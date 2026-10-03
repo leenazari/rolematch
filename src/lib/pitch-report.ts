@@ -42,7 +42,7 @@ function isStringPairArray(value: unknown, first: string, second: string): boole
   );
 }
 
-function isPitchCritique(value: unknown): value is PitchCritique {
+export function isPitchCritique(value: unknown): value is PitchCritique {
   if (!value || typeof value !== "object") return false;
   const report = value as Record<string, unknown>;
   return typeof report.verdict === "string" &&
@@ -55,21 +55,24 @@ function isPitchCritique(value: unknown): value is PitchCritique {
     isStringPairArray(report.glossary, "term", "definition");
 }
 
-export async function generatePitchReport(instructions: string, input: string): Promise<PitchCritique> {
+function client(timeout: number) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("Pitch reports are not configured. Please contact support.");
   }
-  const openai = new OpenAI({ timeout: 45_000, maxRetries: 0 });
-  const response = await openai.responses.create({
-    model: process.env.OPENAI_PITCH_REPORT_MODEL || "gpt-6.1-sol",
+  return new OpenAI({ timeout, maxRetries: 0 });
+}
+
+function parameters(instructions: string, input: string, model = process.env.OPENAI_PITCH_REPORT_MODEL || "gpt-6.1-sol") {
+  return {
+    model,
     instructions,
     input,
-    reasoning: { effort: "low" },
+    reasoning: { effort: "low" as const },
     max_output_tokens: 8000,
     store: false,
     text: {
       format: {
-        type: "json_schema",
+        type: "json_schema" as const,
         name: "pitch_critique",
         strict: true,
         schema: {
@@ -80,7 +83,18 @@ export async function generatePitchReport(instructions: string, input: string): 
         },
       },
     },
-  });
+  };
+}
+
+export async function beginPitchReport(instructions: string, input: string, model?: string) {
+  return client(25_000).responses.create({ ...parameters(instructions, input, model), background: true, store: true });
+}
+
+export async function retrievePitchReport(responseId: string) {
+  return client(20_000).responses.retrieve(responseId);
+}
+
+export function parsePitchReport(response: { status?: string; output_text?: string }): PitchCritique {
   if (response.status !== "completed" || !response.output_text) {
     throw new Error("The report could not be completed. Please try generating it again.");
   }
@@ -88,5 +102,16 @@ export async function generatePitchReport(instructions: string, input: string): 
   if (!isPitchCritique(report)) {
     throw new Error("The report format was invalid. Please try generating it again.");
   }
-  return report;
+  function scrub(value: any): any {
+    if (typeof value === "string") return value.replace(/[—–―−‒]/g, ", ").replace(/\s+-\s+/g, ", ")
+      .replace(/,\s*,/g, ",").replace(/\s+/g, " ").trim();
+    if (Array.isArray(value)) return value.map(scrub);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrub(v)]));
+    return value;
+  }
+  return scrub(report);
+}
+
+export async function generatePitchReport(instructions: string, input: string): Promise<PitchCritique> {
+  return parsePitchReport(await client(45_000).responses.create(parameters(instructions, input)));
 }

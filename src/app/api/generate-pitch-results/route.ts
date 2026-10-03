@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generatePitchReport } from "@/lib/pitch-report";
-import type { PitchData, PitchMessage } from "@/types";
+import { runPitchReportJob, validReportAccess } from "@/lib/pitch-report-job";
+import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 type Body = {
-  pitchData: PitchData;
-  conversation: PitchMessage[];
+  pitchData?: PitchData;
+  conversation?: PitchMessage[];
+  reportId: string;
+  accessToken: string;
+  retry?: boolean;
+  existingCritique?: PitchCritique;
+  generatedAt?: string;
 };
 
 const PROMPT_PARTS: string[] = [];
@@ -112,10 +117,17 @@ const RESULTS_PROMPT = PROMPT_PARTS.join("\n");
 export async function POST(req: NextRequest) {
   try {
     const body: Body = await req.json();
-    const { pitchData, conversation } = body;
-
-    if (!pitchData || !conversation) {
-      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    const { pitchData, conversation, reportId, accessToken, retry } = body;
+    if (!validReportAccess(reportId, accessToken)) {
+      return NextResponse.json({ ok: false, error: "Invalid report access." }, { status: 400 });
+    }
+    const origin = req.headers?.get("origin");
+    if (origin && req.url && origin !== new URL(req.url).origin) {
+      return NextResponse.json({ ok: false, error: "Invalid request origin." }, { status: 403 });
+    }
+    if (!pitchData || !Array.isArray(conversation)) {
+      const result = await runPitchReportJob({ id: reportId, accessToken, retry });
+      return NextResponse.json(result, { status: result.status === "processing" ? 202 : 200, headers: { "Cache-Control": "no-store" } });
     }
 
     const conversationLog = conversation
@@ -143,36 +155,13 @@ export async function POST(req: NextRequest) {
       "\n\nCLOSING STATEMENT\n" + (closingAnswer?.text || "Not present in this conversation. Assess the available answers.") +
       "\n\nGenerate the critique JSON now. No preamble. No code fences. Just the JSON.";
 
-    const data = await generatePitchReport(RESULTS_PROMPT, userPrompt);
-
-    function scrubDashes(value: any): any {
-      if (typeof value === "string") {
-        return value
-          .replace(/[—–―−‒]/g, ", ")
-          .replace(/\s+-\s+/g, ", ")
-          .replace(/,\s*,/g, ",")
-          .replace(/\s+/g, " ")
-          .trim();
-      }
-      if (Array.isArray(value)) {
-        return value.map(scrubDashes);
-      }
-      if (value && typeof value === "object") {
-        const out: any = {};
-        for (const k in value) {
-          out[k] = scrubDashes(value[k]);
-        }
-        return out;
-      }
-      return value;
-    }
-
-    const cleanData = scrubDashes(data);
-    return NextResponse.json({ ok: true, data: cleanData });
+    const result = await runPitchReportJob({ id: reportId, accessToken, pitchData, conversation,
+      instructions: RESULTS_PROMPT, input: userPrompt, retry, existingCritique: body.existingCritique, generatedAt: body.generatedAt });
+    return NextResponse.json(result, { status: result.status === "processing" ? 202 : 200, headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
-    console.error("generate-pitch-results error:", e);
+    console.error("generate-pitch-results error:", { name: e?.name, status: e?.status, code: e?.code });
     return NextResponse.json(
-      { ok: false, error: e?.message || "Failed to generate results" },
+      { ok: false, error: e?.status ? "Report generation is temporarily unavailable. Please try again." : e?.message || "Failed to generate results" },
       { status: 500 }
     );
   }

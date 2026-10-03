@@ -101,6 +101,8 @@ export default function PitchPage() {
     sessionStorage.setItem("pitchperfect_finished_at", new Date().toISOString());
     sessionStorage.removeItem("pitchperfect_critique");
     sessionStorage.removeItem("pitchperfect_generated_at");
+    sessionStorage.removeItem("pitchperfect_report_access");
+    sessionStorage.removeItem("pitchperfect_pdf_saved");
 
     router.push("/pitch/results");
   }
@@ -121,7 +123,7 @@ export default function PitchPage() {
                 Upload your one-pager, have a friendly conversation, then get a written breakdown that doesn't pull punches.
               </p>
               <p className="text-xs text-slate-400">
-                For seed-stage founders. We use your pitch only for this session.
+                For seed-stage founders. Your pitch and report are saved privately so your results can be recovered.
               </p>
             </>
           )}
@@ -165,6 +167,10 @@ export default function PitchPage() {
           <PitchConfirm
             data={pitchData}
             onConfirm={(finalData) => {
+              for (const key of ["pitchperfect_conversation", "pitchperfect_critique", "pitchperfect_generated_at",
+                "pitchperfect_report_access", "pitchperfect_pdf_saved", "pitchperfect_started_at", "pitchperfect_finished_at"]) {
+                sessionStorage.removeItem(key);
+              }
               sessionStorage.setItem("pitchperfect_data", JSON.stringify(finalData));
               router.push("/pitch/conversation");
             }}
