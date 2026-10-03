@@ -47,3 +47,35 @@ test("resume ignores replayed events, saves the exact prefix and does not cancel
   assert.deepEqual(checkpoint, { cursor: 7, text: '{"verdict":"Almost ready."}' });
   assert.equal(aborts, 1);
 });
+
+test("returning a report ID leaves its creation iterator open until the background consumer completes", async t => {
+  const original = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-only-not-a-real-key";
+  t.after(() => { if (original === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = original; });
+  let closed = false, aborts = 0;
+  class OpenAI {
+    constructor() { this.responses = { create: async () => ({
+      controller: { abort() { aborts++; } },
+      async *[Symbol.asyncIterator]() {
+        try {
+          yield { type: "response.created", sequence_number: 0, response: { id: "resp_original", status: "queued" } };
+          yield { type: "response.output_text.delta", sequence_number: 1, delta: '{"verdict":"First feedback",' };
+          yield { type: "response.reasoning_summary_text.delta", sequence_number: 2, delta: "private reasoning" };
+          yield { type: "response.output_text.delta", sequence_number: 3, delta: '"strong":["Customers"]}' };
+          yield { type: "response.completed", sequence_number: 4 };
+        } finally { closed = true; }
+      },
+    }) }; }
+  }
+  const lib = loadTs("src/lib/pitch-report.ts", { openai: OpenAI });
+  const started = await lib.beginPitchReport("Instructions", "Public demo");
+  assert.equal(started.id, "resp_original");
+  assert.equal(closed, false);
+  assert.equal(aborts, 0);
+  const checkpoints = [];
+  await lib.consumePitchReportStream(started, async checkpoint => checkpoints.push(checkpoint));
+  assert.equal(checkpoints[0].text, '{"verdict":"First feedback",');
+  assert.deepEqual(checkpoints.at(-1), { cursor: 4, text: '{"verdict":"First feedback","strong":["Customers"]}' });
+  assert.equal(closed, true, "the consumer closes the iterator after the terminal event");
+  assert.equal(aborts, 1);
+});

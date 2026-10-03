@@ -3,7 +3,7 @@ import { runPitchReportJob, validReportAccess } from "@/lib/pitch-report-job";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type Body = {
   pitchData?: PitchData;

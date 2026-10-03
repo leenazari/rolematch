@@ -138,14 +138,49 @@ function parameters(instructions: string, input: string, model = process.env.OPE
 
 export async function beginPitchReport(instructions: string, input: string, model?: string) {
   const stream = await client(25_000).responses.create({ ...parameters(instructions, input, model), background: true, store: true, stream: true });
+  const iterator = stream[Symbol.asyncIterator]();
   try {
-    for await (const event of stream) {
-      if (event.type === "response.created") return { ...event.response, streaming: true, streamCursor: event.sequence_number };
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const event = next.value;
+      // Hand the still-open iterator to the background worker. Returning from a
+      // for-await loop would close the creation stream before it produces output.
+      if (event.type === "response.created") return { ...event.response, streaming: true,
+        streamCursor: event.sequence_number, iterator, controller: stream.controller };
     }
     throw new Error("The report did not start. Please try again.");
-  } finally {
-    // Close this connection, not the background generation. Later polls resume its stream.
+  } catch (error) {
     stream.controller.abort();
+    throw error;
+  }
+}
+
+export async function consumePitchReportStream(started: Awaited<ReturnType<typeof beginPitchReport>>,
+  save: (checkpoint: { cursor: number; text: string }) => Promise<void>, budgetMs = 270_000) {
+  let cursor = started.streamCursor, text = "", lastSaved = 0;
+  const timer = setTimeout(() => started.controller.abort(), budgetMs);
+  try {
+    while (true) {
+      const next = await started.iterator.next();
+      if (next.done) break;
+      const event = next.value;
+      if (event.sequence_number <= cursor) continue;
+      cursor = event.sequence_number;
+      if (event.type === "response.output_text.delta") text += event.delta;
+      if (text.length > 200_000) throw new Error("Report output exceeds the supported size.");
+      // Save frequently enough for two-second UI polling without writing every token.
+      if (Date.now() - lastSaved >= 1_000 || ["response.completed", "response.failed", "response.incomplete"].includes(event.type)) {
+        await save({ cursor, text });
+        lastSaved = Date.now();
+      }
+      if (["response.completed", "response.failed", "response.incomplete"].includes(event.type)) break;
+    }
+  } finally {
+    clearTimeout(timer);
+    started.controller.abort();
+    await started.iterator.return?.();
+    await save({ cursor, text });
   }
 }
 
