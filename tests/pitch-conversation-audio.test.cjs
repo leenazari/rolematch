@@ -9,7 +9,7 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
     ["pitchperfect_data", JSON.stringify({ companyName: "Tilly" })],
   ]);
   const globals = { window: global.window, navigator: global.navigator, MediaRecorder: global.MediaRecorder,
-    sessionStorage: global.sessionStorage, fetch: global.fetch };
+    sessionStorage: global.sessionStorage, fetch: global.fetch, RTCPeerConnection: global.RTCPeerConnection };
   class Recorder {
     static isTypeSupported() { return true; }
     constructor() { recordings.push(this); this.state = "inactive"; this.mimeType = "audio/webm"; }
@@ -22,6 +22,7 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
   }
   global.window = { MediaRecorder: Recorder };
   global.MediaRecorder = Recorder;
+  global.RTCPeerConnection = function () {};
   Object.defineProperty(global, "navigator", { configurable: true, value: { mediaDevices: {
     getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }),
   } } });
@@ -35,7 +36,14 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
     return { ok: true, json: async () => result };
   };
   const router = { push() {} };
-  const recorderHook = loadTs("src/hooks/usePitchAudioRecorder.ts");
+  let liveOptions;
+  const recorderHook = loadTs("src/hooks/usePitchAudioRecorder.ts", {
+    "@/lib/pitch-live-transcript": { connectPitchLiveTranscript: (stream, options) => {
+      liveOptions = options;
+      options.onStatus("live");
+      return { ready: Promise.resolve(), close() {} };
+    } },
+  });
   const { default: Page } = loadTs("src/app/pitch/conversation/page.tsx", {
     "next/navigation": { useRouter: () => router },
     "@vercel/analytics": { track() {} },
@@ -58,10 +66,16 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
   await act(async () => root.root.findByType("video").props.onEnded());
   await act(async () => button("Tap to answer").props.onClick());
   assert.equal(recordings[0].state, "recording");
-  assert.match(root.root.findByType("textarea").props.placeholder, /after you press Stop/);
+  assert.match(root.root.findByType("textarea").props.placeholder, /as you talk/);
+  act(() => liveOptions.onText("We ran"));
+  assert.equal(root.root.findByType("textarea").props.value, "We ran");
+  act(() => liveOptions.onText("We ran a trial."));
+  assert.equal(root.root.findByType("textarea").props.value, "We ran a trial.");
   await act(async () => button("Stop").props.onClick());
   assert.equal(root.root.findByType("textarea").props.value, "We ran a trial in one of their pubs.");
   await act(async () => button("Add more").props.onClick());
+  act(() => liveOptions.onText("They want"));
+  assert.equal(root.root.findByType("textarea").props.value, "We ran a trial in one of their pubs. They want");
   await act(async () => button("Stop").props.onClick());
   const text = "We ran a trial in one of their pubs. They want five sites.";
   assert.equal(root.root.findByType("textarea").props.value, text);

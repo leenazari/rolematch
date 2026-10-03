@@ -29,7 +29,7 @@ export default function PitchConversationPage() {
 
   const {
     supported: voiceSupported, status: recordingStatus, error: voiceError, canRetry,
-    start, stop, retry, reset: hardReset,
+    liveText, liveStatus, start, stop, retry, reset: hardReset,
   } = usePitchAudioRecorder({
     onComplete(text) {
       setDraftAnswer(prev => (prev ? prev + " " + text : text).trim());
@@ -205,6 +205,10 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
     phase === "finalising" || phase === "starting" ? "thinking" :
     "idle";
 
+  const displayedAnswer = phase === "listening" || phase === "finalising"
+    ? [draftAnswer, liveText].filter(Boolean).join(" ")
+    : draftAnswer;
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
       <div className="max-w-3xl mx-auto">
@@ -314,15 +318,19 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
                   )}
                 </div>
                 <textarea
-                  value={draftAnswer}
+                  value={displayedAnswer}
                   readOnly={phase === "listening" || phase === "finalising"}
                   onChange={function (e) { setDraftAnswer(e.target.value); }}
-                  placeholder={phase === "listening" ? "Recording your answer. Your words will appear after you press Stop." : "Type your answer here, or use Add more to dictate."}
+                  placeholder={phase === "listening" ? "Speak now. Your words will appear here as you talk." : "Type your answer here, or use Add more to dictate."}
                   className="w-full p-3 text-base text-slate-900 leading-relaxed border border-slate-200 rounded-lg focus:border-purple-400 focus:outline-none resize-none min-h-[120px] bg-white"
                   rows={5}
                 />
                 {phase === "listening" ? (
-                  <p className="mt-2 text-sm text-purple-700">Speak naturally, then press Stop. Up to three minutes per recording.</p>
+                  <p className="mt-2 text-sm text-purple-700">
+                    {liveStatus === "unavailable"
+                      ? "Live text is temporarily unavailable. Your audio is still recording and will appear after Stop."
+                      : "Your words appear as you speak. Press Stop when finished, then review and send your answer."}
+                  </p>
                 ) : null}
               </div>
             ) : null}

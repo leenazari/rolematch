@@ -23,6 +23,12 @@ Each recording is limited to three minutes and 3.5 MB. Audio is not saved by thi
 app and is released after transcription, Clear, a new recording, or navigation.
 Failed uploads can be retried while the page remains open. Text appears after
 Stop, and users can edit it, add another recording, or type their whole answer.
+Live words appear in the answer box through an OpenAI WebRTC transcription-only
+session using `gpt-live-transcribe`. `/api/pitch-live-transcription` negotiates the
+connection without exposing the API key. Live text is a preview; Stop replaces
+that preview with the final recorded-audio transcript. The live connection closes
+on Stop, Clear, recording errors and navigation. If live text is unavailable,
+recording continues and the UI explains that the transcript will appear after Stop.
 
 ## Verification
 
