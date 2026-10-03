@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { connectPitchLiveTranscript, type LiveTextStatus } from "@/lib/pitch-live-transcript";
 
 type Status = "idle" | "starting" | "recording" | "transcribing" | "error";
 type Session = {
@@ -11,6 +12,7 @@ type Session = {
   timer?: ReturnType<typeof setTimeout>;
   request?: AbortController;
   companyName: string;
+  live?: ReturnType<typeof connectPitchLiveTranscript>;
 };
 const MAX_AUDIO_BYTES = 3_500_000;
 
@@ -22,6 +24,8 @@ export function usePitchAudioRecorder(callbacks: {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [canRetry, setCanRetry] = useState(false);
+  const [liveText, setLiveText] = useState("");
+  const [liveStatus, setLiveStatus] = useState<LiveTextStatus>("connecting");
   const sessionRef = useRef<Session | null>(null);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -31,6 +35,7 @@ export function usePitchAudioRecorder(callbacks: {
     sessionRef.current = null;
     if (!session) return;
     clearTimeout(session.timer);
+    session.live?.close();
     session.request?.abort();
     if (session.recorder) {
       session.recorder.ondataavailable = null;
@@ -51,6 +56,7 @@ export function usePitchAudioRecorder(callbacks: {
   const fail = useCallback((session: Session, message: string) => {
     if (sessionRef.current !== session) return;
     clearTimeout(session.timer);
+    session.live?.close();
     session.stream?.getTracks().forEach(track => track.stop());
     setStatus("error");
     setError(message);
@@ -88,6 +94,7 @@ export function usePitchAudioRecorder(callbacks: {
       if (!text) throw new Error("No speech was detected. Try again or type your answer.");
       if (sessionRef.current !== session) return;
       session.audio = undefined;
+      setLiveText("");
       setStatus("idle");
       callbacksRef.current.onComplete(text);
     } catch (cause) {
@@ -106,6 +113,8 @@ export function usePitchAudioRecorder(callbacks: {
     setStatus("starting");
     setError("");
     setCanRetry(false);
+    setLiveText("");
+    setLiveStatus("connecting");
     const session: Session = { chunks: [], companyName };
     sessionRef.current = session;
     try {
@@ -118,6 +127,19 @@ export function usePitchAudioRecorder(callbacks: {
         return false;
       }
       session.stream = stream;
+      // Open the live channel before inviting speech; the recorder remains the
+      // final source if live text cannot connect or drops during the answer.
+      if (typeof RTCPeerConnection === "function") {
+        try {
+          session.live = connectPitchLiveTranscript(stream, {
+            companyName,
+            onText: text => { if (sessionRef.current === session) setLiveText(text); },
+            onStatus: value => { if (sessionRef.current === session) setLiveStatus(value); },
+          });
+          await session.live.ready;
+        } catch { setLiveStatus("unavailable"); }
+      } else setLiveStatus("unavailable");
+      if (sessionRef.current !== session) return false;
       const mimeType = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"]
         .find(type => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, {
@@ -136,6 +158,7 @@ export function usePitchAudioRecorder(callbacks: {
       recorder.onstop = () => {
         if (sessionRef.current !== session) return;
         clearTimeout(session.timer);
+        session.live?.close();
         stream.getTracks().forEach(track => track.stop());
         session.audio = new Blob(session.chunks, { type: recorder.mimeType || "audio/webm" });
         session.chunks = [];
@@ -175,7 +198,8 @@ export function usePitchAudioRecorder(callbacks: {
     setStatus("idle");
     setError("");
     setCanRetry(false);
+    setLiveText("");
   }, [release]);
 
-  return { supported, status, error, canRetry, start, stop, retry, reset };
+  return { supported, status, error, canRetry, liveText, liveStatus, start, stop, retry, reset };
 }

@@ -3,7 +3,9 @@ const assert = require("node:assert/strict");
 const React = require("react");
 const { create, act } = require("react-test-renderer");
 const { loadTs } = require("./load-ts.cjs");
-const { usePitchAudioRecorder } = loadTs("src/hooks/usePitchAudioRecorder.ts");
+const { usePitchAudioRecorder } = loadTs("src/hooks/usePitchAudioRecorder.ts", {
+  "@/lib/pitch-live-transcript": loadTs("src/lib/pitch-live-transcript.ts"),
+});
 
 function deferred() {
   let resolve;
