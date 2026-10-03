@@ -3,6 +3,30 @@ const assert = require("node:assert/strict");
 const { loadTs } = require("./load-ts.cjs");
 const report = loadTs("src/lib/pitch-report.ts");
 const { parsePartialPitchReport } = loadTs("src/lib/pitch-report-progress.ts", { "@/lib/pitch-report": report });
+const fixture = require("./pitch-insights.fixture.cjs");
+
+test("the first complete chunk is visible while the second chunk is still being written", () => {
+  const first = Object.fromEntries(report.PITCH_OPENING_KEYS.map(key => [key, fixture[key]]));
+  const second = Object.fromEntries(report.PITCH_DETAIL_KEYS.map(key => [key, fixture[key]]));
+  const prefix = '{"first":' + JSON.stringify(first) + ',"second":';
+  assert.deepEqual(parsePartialPitchReport(prefix), first);
+  assert.deepEqual(parsePartialPitchReport(prefix + '{"weak":["Still writing'), first);
+  const completed = prefix + JSON.stringify(second) + '}';
+  assert.deepEqual(parsePartialPitchReport(completed), { ...first, ...second });
+  assert.deepEqual(report.parsePitchReport({ status: "completed", output_text: completed }), { ...first, ...second });
+  assert.deepEqual(parsePartialPitchReport('{"first":{"verdict":"Incomplete"}'), {});
+});
+
+test("the cost record totals both saved parts rather than reporting only the fast part", () => {
+  const usage = report.combinePitchReportUsage({ input_tokens: 1000, output_tokens: 200, estimated_report_cost_usd: 0.004, web_search_calls: 0 },
+    { input_tokens: 300, output_tokens: 100, estimated_report_cost_usd: 0.0116, web_search_calls: 1 });
+  assert.equal(usage.input_tokens, 1300);
+  assert.equal(usage.output_tokens, 300);
+  assert.equal(usage.estimated_report_cost_usd, 0.0156);
+  assert.equal(usage.web_search_calls, 1);
+  assert.equal(usage.generations, 2);
+  assert.equal(report.combinePitchReportUsage({}, {}).estimated_report_cost_usd, null);
+});
 
 test("only completed fields appear as a report arrives one character at a time", () => {
   const fields = { verdict: 'The customer said "yes", with a } in the quote.', verdictCategory: "almost",

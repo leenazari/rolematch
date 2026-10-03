@@ -1,4 +1,4 @@
-import { isPitchCritique, scrubPitchReport } from "@/lib/pitch-report";
+import { isPitchCritique, scrubPitchReport, PITCH_OPENING_KEYS, PITCH_DETAIL_KEYS } from "@/lib/pitch-report";
 import type { PitchCritique } from "@/types";
 
 // Only complete JSON values become visible. An unfinished paragraph or array stays hidden.
@@ -49,6 +49,14 @@ export function parsePartialPitchReport(text: string): Partial<PitchCritique> {
     if (end < 0) break;
     try {
       const value = JSON.parse(text.slice(position, end));
+      if (key === "first" || key === "second") {
+        const keys = key === "first" ? PITCH_OPENING_KEYS : PITCH_DETAIL_KEYS;
+        if ((key === "first" || PITCH_OPENING_KEYS.every(field => Object.hasOwn(partial, field))) &&
+          value && typeof value === "object" && keys.every(field => Object.hasOwn(value, field)) &&
+          isPitchCritique({ ...defaults, ...value })) {
+          for (const field of keys) partial[field] = value[field];
+        }
+      }
       // Market comparisons wait for completed-response source verification.
       if (previewKeys.has(key) && isPitchCritique({ ...defaults, [key]: value })) partial[key] = value;
     } catch { break; }

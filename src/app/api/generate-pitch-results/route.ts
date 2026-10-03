@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
       "\n\nGenerate the critique JSON now. No preamble. No code fences. Just the JSON.";
 
     const result = await runPitchReportJob({ id: reportId, accessToken, pitchData, conversation,
-      instructions: RESULTS_PROMPT, input: userPrompt, retry, existingCritique: body.existingCritique, generatedAt: body.generatedAt });
+      instructions: RESULTS_PROMPT, input: userPrompt, retry, existingCritique: body.existingCritique, generatedAt: body.generatedAt, split: true });
     return NextResponse.json(result, { status: result.status === "processing" ? 202 : 200, headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
     console.error("generate-pitch-results error:", { name: e?.name, status: e?.status, code: e?.code });

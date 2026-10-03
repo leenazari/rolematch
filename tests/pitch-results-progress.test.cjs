@@ -38,6 +38,11 @@ test("the first feedback is readable while later sections prepare, and PDF downl
   assert.doesNotMatch(s.text(), /What to do in the next 30 days/);
   assert.equal(s.pdfButton().props.disabled, true);
   assert.equal(s.storage.get("pitchperfect_critique"), undefined);
+  const { marketResearch, ...core } = fixture;
+  await renderer.act(async () => s.options.onProgress(core));
+  assert.match(s.text(), /Where AI could help your business/);
+  assert.doesNotMatch(s.text(), /Market and competitors/);
+  assert.equal(s.pdfButton().props.disabled, true);
   await renderer.act(async () => s.resolve({ data: fixture, generatedAt: "2026-10-03T16:00:00Z", pdfSaved: true }));
   assert.match(s.text(), /Market and competitors/);
   assert.match(s.text(), /Where AI could help your business/);

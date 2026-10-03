@@ -314,7 +314,7 @@ export default function PitchResultsPage() {
 
         {savingPdf ? <div role="status" className="mb-6 rounded-xl border border-purple-200 bg-purple-50 p-4 text-sm text-purple-900">
           <p className="font-semibold mb-1">Report in progress</p>
-          <p>Read each section as it arrives. More feedback is on its way, and the complete PDF will be available when everything is ready.</p>
+          <p>Read each section as it arrives. Your verdict and strengths come first, followed by fixes and next steps. Market research is being prepared separately. The complete PDF will be available when everything is ready.</p>
         </div> : null}
         {error ? <div role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
           <p>{error}</p>
