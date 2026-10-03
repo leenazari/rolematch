@@ -89,7 +89,9 @@ PROMPT_PARTS.push('    {"question": "A specific question a real seed VC would as
 PROMPT_PARTS.push('  ],');
 PROMPT_PARTS.push('  "glossary": [');
 PROMPT_PARTS.push('    {"term": "the term used in the critique", "definition": "1 sentence plain-English explanation of what it means and why it matters at this stage"}');
-PROMPT_PARTS.push('  ]');
+PROMPT_PARTS.push('  ],');
+PROMPT_PARTS.push('  "aiOpportunities": [{"businessArea": "Business function", "pitchEvidence": "Specific example from the pitch", "workflow": "How AI would assist the actual task", "firstStep": "Small pilot and data needed", "successMeasure": "Proposed measurable pilot target", "humanCheck": "What a person reviews"}],');
+PROMPT_PARTS.push('  "marketResearch": {"scope": "Category, customers and geography covered", "summary": "Brief sourced market view", "competitors": [{"name": "Competitor", "offering": "Verified product facts", "overlap": "Why customers may consider it", "differenceToTest": "Hypothesis to validate", "sourceUrls": ["Exact retrieved URL"]}], "nextSteps": ["Concrete validation action"], "limitations": "Evidence gaps and scope limits", "sources": [{"title": "Source title", "url": "Exact retrieved URL"}]}');
 PROMPT_PARTS.push("}");
 PROMPT_PARTS.push("");
 PROMPT_PARTS.push("REQUIREMENTS PER SECTION");
