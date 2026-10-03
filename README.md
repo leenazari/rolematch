@@ -21,14 +21,41 @@ Set `OPENAI_PITCH_TRANSCRIPTION_MODEL` to override the model. This avoids Androi
 browser speech engines that emit repeated, cumulative recognition fragments.
 Each recording is limited to three minutes and 3.5 MB. Audio is not saved by this
 app and is released after transcription, Clear, a new recording, or navigation.
-Failed uploads can be retried while the page remains open. Text appears after
-Stop, and users can edit it, add another recording, or type their whole answer.
+Failed uploads can be retried while the page remains open. Users can edit the
+final transcript after Stop, add another recording, or type their whole answer.
 Live words appear in the answer box through an OpenAI WebRTC transcription-only
 session using `gpt-live-transcribe`. `/api/pitch-live-transcription` negotiates the
 connection without exposing the API key. Live text is a preview; Stop replaces
 that preview with the final recorded-audio transcript. The live connection closes
 on Stop, Clear, recording errors and navigation. If live text is unavailable,
 recording continues and the UI explains that the transcript will appear after Stop.
+
+## Saved reports
+
+Report generation runs in OpenAI background mode and the page polls for completion,
+so longer reports no longer depend on a single 45-second request. The key needs
+Responses read and write permissions. Each session gets a report ID and a random
+access token, stored before the first request. Refresh and Retry reuse that job.
+OpenAI stores the background response so it can be retrieved; completed reports
+are retained privately in Supabase.
+
+Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or the legacy
+`SUPABASE_SERVICE_ROLE_KEY`) in Vercel Production and Preview. These are server-only
+variables. Apply the `pitch_report_archive` migration in `supabase/migrations`.
+It is already applied to RoleMatch project `ryrseyvgfmrmiqngkvxs`.
+
+The server creates the private `pitch-reports` Storage bucket on first use and
+saves a PDF for every completed report, even if Download is never clicked. The
+`pitch_reports` table stores the pitch, transcript, critique, model, token usage,
+timestamps and PDF path. RLS is enabled, direct anon/authenticated access is revoked,
+and guest access tokens are hashed. PDF downloads require the matching report ID
+and secret access token; no public URLs or public listing policies are created.
+Administrators can find the copies in Supabase Storage and the report table.
+
+If PDF storage fails, the critique remains visible and saved. Retry saving PDF
+only retries rendering/uploading the copy. It does not generate a new critique.
+Older reports cached in the browser are archived without being regenerated.
+Starting a new pitch clears the previous session's report access and cached results.
 
 ## Verification
 

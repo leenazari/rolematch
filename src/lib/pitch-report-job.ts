@@ -1,0 +1,122 @@
+import { createHash } from "node:crypto";
+import { beginPitchReport, retrievePitchReport, parsePitchReport, isPitchCritique } from "@/lib/pitch-report";
+import { pitchStorageClient, savePitchPdf, PITCH_PDF_BUCKET } from "@/lib/pitch-storage";
+import { renderPitchPdf } from "@/lib/pitch-pdf";
+import type { PitchData, PitchMessage, PitchCritique } from "@/types";
+
+type Job = {
+  id: string; access_token_hash: string; pitch_data: PitchData; conversation: PitchMessage[];
+  report_input: string; report_instructions: string; model: string; response_id: string | null;
+  status: "starting" | "processing" | "ready" | "failed";
+  critique: PitchCritique | null; pdf_path: string | null; generated_at: string | null; updated_at: string;
+};
+type Request = { id: string; accessToken: string; pitchData?: PitchData; conversation?: PitchMessage[];
+  instructions?: string; input?: string; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string };
+
+export function validReportAccess(id: unknown, token: unknown): boolean {
+  return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) &&
+    typeof token === "string" && /^[0-9a-f]{64}$/i.test(token);
+}
+function tokenHash(token: string) { return createHash("sha256").update(token).digest("hex"); }
+const pending = { ok: true, status: "processing" };
+
+async function findJob(id: string, accessToken: string): Promise<Job | null> {
+  const { data, error } = await pitchStorageClient().from("pitch_reports").select("*")
+    .eq("id", id).eq("access_token_hash", tokenHash(accessToken)).maybeSingle();
+  if (error) throw new Error("Saved reports are temporarily unavailable. Please try again.");
+  return data;
+}
+async function updateJob(id: string, fields: Record<string, unknown>) {
+  const { error } = await pitchStorageClient().from("pitch_reports").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error("The report could not be saved yet. Please try again.");
+}
+
+async function startJob(job: Job) {
+  try {
+    const response = await beginPitchReport(job.report_instructions, job.report_input, job.model);
+    await updateJob(job.id, { response_id: response.id, status: "processing" });
+    return pending;
+  } catch (error) {
+    console.error("pitch-report start failed", { name: (error as Error).name });
+    await updateJob(job.id, { status: "failed" });
+    throw new Error("The report could not start. Please try generating it again.");
+  }
+}
+
+async function completeJob(job: Job) {
+  try {
+    const path = job.pdf_path || `${job.id}/PitchPerfect_${job.pitch_data.companyName.replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 80)}.pdf`;
+    if (!job.pdf_path) {
+      const pdf = await renderPitchPdf(job.pitch_data, job.critique!, job.generated_at!);
+      await savePitchPdf(path, pdf);
+      await updateJob(job.id, { status: "ready", pdf_path: path });
+    }
+    return { ok: true, status: "completed", data: job.critique, generatedAt: job.generated_at, pdfSaved: true, reportId: job.id };
+  } catch (error) {
+    console.error("pitch-report PDF saving failed", { name: (error as Error).name });
+    // The critique is already durable. Retrying this job only retries the PDF, never the paid AI generation.
+    return { ok: true, status: "completed", data: job.critique, generatedAt: job.generated_at,
+      pdfSaved: false, reportId: job.id, saveWarning: "Your report is ready, but its PDF copy has not saved yet. Please retry saving." };
+  }
+}
+
+export async function runPitchReportJob(request: Request) {
+  if (!validReportAccess(request.id, request.accessToken)) throw new Error("Invalid report access.");
+  if (request.existingCritique && !isPitchCritique(request.existingCritique)) throw new Error("Invalid saved report.");
+  let job = await findJob(request.id, request.accessToken);
+  if (!job) {
+    if (!request.pitchData || !Array.isArray(request.conversation) || !request.instructions || !request.input) {
+      throw new Error("Report not found.");
+    }
+    const { data, error } = await pitchStorageClient().from("pitch_reports").insert({
+      id: request.id, access_token_hash: tokenHash(request.accessToken), company_name: request.pitchData.companyName,
+      pitch_data: request.pitchData, conversation: request.conversation, report_instructions: request.instructions,
+      report_input: request.input, model: request.existingCritique ? "previously_generated" : process.env.OPENAI_PITCH_REPORT_MODEL || "gpt-6.1-sol",
+      status: request.existingCritique ? "processing" : "starting", critique: request.existingCritique || null,
+      generated_at: request.existingCritique ? (request.generatedAt && !isNaN(Date.parse(request.generatedAt))
+        ? new Date(request.generatedAt).toISOString() : new Date().toISOString()) : null,
+    }).select("*").single();
+    if (error) {
+      if (error.code !== "23505") throw new Error("Your conversation could not be saved yet. Please try again.");
+      job = await findJob(request.id, request.accessToken);
+      if (!job) throw new Error("Report not found.");
+    } else return data.critique ? completeJob(data) : startJob(data);
+  }
+  if (job.critique) return completeJob(job);
+  if (job.status === "failed") {
+    if (!request.retry) throw new Error("The report could not be completed. Please try generating it again.");
+    // Only one concurrent retry may claim this job.
+    const { data, error } = await pitchStorageClient().from("pitch_reports").update({ status: "starting",
+      response_id: null, updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", "failed").select("*").maybeSingle();
+    if (error) throw new Error("The report could not restart yet. Please try again.");
+    return data ? startJob(data) : pending;
+  }
+  if (!job.response_id) {
+    if (Date.now() - new Date(job.updated_at).getTime() > 90_000) {
+      const { data, error } = await pitchStorageClient().from("pitch_reports").update({ status: "failed" })
+        .eq("id", job.id).eq("status", "starting").is("response_id", null).eq("updated_at", job.updated_at).select("*").maybeSingle();
+      if (error) throw new Error("Saved reports are temporarily unavailable. Please try again.");
+      if (data) throw new Error("The report did not start. Please try generating it again.");
+    }
+    return pending;
+  }
+  const response = await retrievePitchReport(job.response_id);
+  if (response.status === "queued" || response.status === "in_progress") return pending;
+  let critique: PitchCritique;
+  try { critique = parsePitchReport(response); }
+  catch {
+    await updateJob(job.id, { status: "failed" });
+    throw new Error("The report could not be completed. Please try generating it again.");
+  }
+  const generatedAt = new Date().toISOString();
+  await updateJob(job.id, { critique, generated_at: generatedAt, token_usage: response.usage || null });
+  return completeJob({ ...job, critique, generated_at: generatedAt });
+}
+
+export async function downloadSavedPitchPdf(id: string, accessToken: string) {
+  const job = await findJob(id, accessToken);
+  if (!job?.pdf_path) throw new Error("Saved PDF not found.");
+  const { data, error } = await pitchStorageClient().storage.from(PITCH_PDF_BUCKET).download(job.pdf_path);
+  if (error || !data) throw new Error("The saved PDF could not be downloaded. Please try again.");
+  return { pdf: Buffer.from(await data.arrayBuffer()), companyName: job.pitch_data.companyName };
+}
