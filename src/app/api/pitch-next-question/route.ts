@@ -12,6 +12,14 @@ type Body = {
   followUpsThisQuestion: number;
 };
 
+const CLOSING_QUESTION_NUMBER = 7;
+const CLOSING_QUESTION = "OK, and in closing, could you give me a 30-second pitch on why now is the right time in the market for your product, why you should raise investment, and what makes you different from anyone else?";
+
+function closingQuestion() {
+  return NextResponse.json({ ok: true, text: CLOSING_QUESTION, questionNumber: CLOSING_QUESTION_NUMBER,
+    followUpsThisQuestion: 0, finished: false, thinAnswer: false });
+}
+
 const FRAMEWORK_PARTS: string[] = [];
 
 FRAMEWORK_PARTS.push("You are an experienced UK seed-stage investor having a friendly first call with a founder. Your job over the next 15 minutes is to understand their business well enough to give them honest written feedback afterwards.");
@@ -71,7 +79,7 @@ FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("When you spot a buzzword answer, your follow-up should be a concrete-example forcing question. Pick ONE angle, not three. Examples: 'Pick one of your current customers. What did they do before they had your product?' or 'Walk me through the last sale you made. Who was it?' or 'Name one company that is your customer today.' Then dig deeper with a follow-up on the NEXT turn.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("THE SIX QUESTIONS");
-FRAMEWORK_PARTS.push("You have 6 core questions to cover. Each targets a specific aspect of the business. After each answer you decide: ask a follow-up to dig into specifics (max 2 follow-ups per question), or move on to the next core question. If they gave a buzzword answer, the follow-up should force concrete detail.");
+FRAMEWORK_PARTS.push("You have 6 core questions to cover, followed by a required 30-second closing pitch. Each targets a specific aspect of the business. After each answer you decide: ask a follow-up to dig into specifics (max 2 follow-ups per question), or move on to the next core question. If they gave a buzzword answer, the follow-up should force concrete detail.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("Q1 - The problem and the customer. Walk through who specifically feels this pain, and what they do today instead of using the solution. Open with ONE focused ask.");
 FRAMEWORK_PARTS.push("Q2 - Why now and why you. What's changed in the world that makes this possible or needed now, and what about the founder's background means they should be the one building this. Pick ONE of these to ask first, use the follow-up for the other.");
@@ -93,7 +101,7 @@ FRAMEWORK_PARTS.push("- Treat their pitch one-pager as background context. Don't
 FRAMEWORK_PARTS.push("- Vary how you reference specific facts (numbers, names, roles) so you don't sound like you're reading from a document.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("CRITICAL TIMING RULE FOR THE SIGN-OFF");
-FRAMEWORK_PARTS.push("When you finish the conversation (after Q6 wraps up), you MUST sign off with the exact text below. Do not improvise. Do not promise the founder anything that takes days, hours, or any specific time period. The feedback is generated INSTANTLY, in under one minute. The founder will see it on the very next screen.");
+FRAMEWORK_PARTS.push("When you finish the conversation (only after the founder has answered the closing pitch after Q6), you MUST sign off with the exact text below. Do not improvise. Do not promise the founder anything that takes days, hours, or any specific time period. The feedback is generated INSTANTLY, in under one minute. The founder will see it on the very next screen.");
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("MANDATORY SIGN-OFF TEXT (use this exactly, no variation):");
 FRAMEWORK_PARTS.push('"Right, that\'s everything I need. Thanks for taking the time. Putting your feedback together now, it\'ll be on your screen in a moment."');FRAMEWORK_PARTS.push("");
@@ -104,9 +112,9 @@ FRAMEWORK_PARTS.push("Respond with ONLY valid JSON. No preamble. No code fences.
 FRAMEWORK_PARTS.push('{ "text": "the question or follow-up to ask", "moveOn": true | false, "finished": false | true, "thinAnswer": true | false }');
 FRAMEWORK_PARTS.push("");
 FRAMEWORK_PARTS.push("Set thinAnswer to true if the founder's most recent answer was buzzword-loaded, generic, or thin on specifics.");
-FRAMEWORK_PARTS.push("If moveOn is true, you're advancing to the next core question (or finishing if currentQuestion is 6).");
+FRAMEWORK_PARTS.push("If moveOn is true, you're advancing to the next core question, or to the closing pitch if currentQuestion is 6. Never finish before the founder has answered the closing pitch.");
 FRAMEWORK_PARTS.push("If moveOn is false, staying on current question with a follow-up.");
-FRAMEWORK_PARTS.push("If ending after Q6, set finished to true and use the MANDATORY SIGN-OFF TEXT above. No improvisation.");
+FRAMEWORK_PARTS.push("After Q6, move on to the closing pitch with moveOn true and finished false. The application will ask the closing question and sign off only after its answer. Never generate the sign-off during a core question.");
 
 const CONVERSATION_FRAMEWORK = FRAMEWORK_PARTS.join("\n");
 
@@ -131,13 +139,24 @@ export async function POST(req: NextRequest) {
     const body: Body = await req.json();
     const { pitchData, history, currentQuestion, followUpsThisQuestion } = body;
 
-    if (!pitchData || typeof currentQuestion !== "number") {
+    if (!pitchData || !Array.isArray(history) || !Number.isInteger(currentQuestion) ||
+        currentQuestion < 1 || currentQuestion > CLOSING_QUESTION_NUMBER ||
+        !Number.isInteger(followUpsThisQuestion) || followUpsThisQuestion < 0) {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
 
     const isFirstMessage = history.length === 0;
     const lastMessage = history.length > 0 ? history[history.length - 1] : null;
     const lastUserAnswer = lastMessage && lastMessage.role === "user" ? lastMessage.text : null;
+
+    // The closing turn is controlled here so the model cannot skip it or follow it with more questions.
+    if (currentQuestion === CLOSING_QUESTION_NUMBER) {
+      const closingWasAsked = history.some(m => m.role === "ai" && m.questionNumber === CLOSING_QUESTION_NUMBER);
+      if (!closingWasAsked || !lastUserAnswer?.trim()) return closingQuestion();
+      return NextResponse.json({ ok: true, text: MANDATORY_SIGN_OFF, questionNumber: CLOSING_QUESTION_NUMBER,
+        followUpsThisQuestion: 0, finished: true, thinAnswer: false });
+    }
+    if (!isFirstMessage && currentQuestion === 6 && followUpsThisQuestion >= 2) return closingQuestion();
 
     const conversationLog = history.length > 0
       ? history.map(function (m) { return (m.role === "ai" ? "Investor" : "Founder") + ": " + m.text; }).join("\n")
@@ -166,10 +185,8 @@ export async function POST(req: NextRequest) {
 
     if (isFirstMessage) {
       stateInstruction = "This is the very first message of the conversation. The founder is " + pitchData.companyName + ". Open with Q1 (the problem and the customer). Use the company name in your opening to make it personal. ONE focused ask only, not stacked. Set moveOn to false. Set finished to false. Set thinAnswer to false.";
-    } else if (currentQuestion === 6 && followUpsThisQuestion >= 2) {
-      stateInstruction = "You are at Q6 and have used 2 follow-ups. Generate the final sign-off. Set moveOn to true, finished to true. Use the MANDATORY SIGN-OFF TEXT exactly as written in the framework. Do NOT improvise. Do NOT mention days, weeks, hours, or any future delivery time.";
     } else if (currentQuestion === 6) {
-      stateInstruction = "You are on Q6. Decide: was their answer rich enough to finish? If moving on, set moveOn and finished to true and use the MANDATORY SIGN-OFF TEXT exactly. Do NOT improvise the sign-off. If following up, set moveOn and finished to false and ask a follow-up that PARAPHRASES what they just said. ONE focused ask only.";
+      stateInstruction = "You are on Q6. Decide: was their answer rich enough to move on to the closing pitch? If moving on, set moveOn true and finished false. If following up, set moveOn and finished false and ask a follow-up that PARAPHRASES what they just said. ONE focused ask only. " + followUpStatus;
     } else {
       stateInstruction = "You are on Q" + currentQuestion + ". Look at their most recent answer. Decide: move on to Q" + (currentQuestion + 1) + " (moveOn true, finished false, generate the opening for Q" + (currentQuestion + 1) + " with a natural varied bridge), or stay on Q" + currentQuestion + " with a follow-up (moveOn false, finished false, ask a follow-up that PARAPHRASES what they said before the question). Your message should contain ONE or TWO asks maximum, never more. If there's more to dig into, that's what the next follow-up turn is for. " + followUpStatus;
     }
@@ -210,12 +227,20 @@ export async function POST(req: NextRequest) {
       text = text[0].toUpperCase() + text.slice(1);
     }
 
-    const moveOn: boolean = !!parsed.moveOn;
-    const finished: boolean = !!parsed.finished;
+    const moveOn: boolean = !!parsed.moveOn || !!parsed.finished;
+    // Treat a legacy model sign-off on Q6 as a request to move on, never as completion.
+    if (currentQuestion === 6 && (moveOn || parsed.finished)) return closingQuestion();
+    const finished = false;
     const thinAnswer: boolean = !!parsed.thinAnswer;
 
-    if (finished) {
-      text = MANDATORY_SIGN_OFF;
+    if (parsed.finished) {
+      // Recover from an early sign-off by asking the next normal topic.
+      const openings = ["", "", "What has changed in the market that makes this the right time?",
+        "What is built today, and what customer evidence do you have?",
+        "Which customers could realistically buy this product?",
+        "How does the business make money from each customer?",
+        "What are you raising, and what will that investment fund?"];
+      text = openings[isFirstMessage ? 1 : currentQuestion + 1] || "Who specifically has the problem your product solves?";
     } else {
       const scrubbed = scrubTimingHallucinations(text);
       if (scrubbed === "") {

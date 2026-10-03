@@ -90,4 +90,24 @@ test("pitch results route passes the pitch and transcript to OpenAI and scrubs d
   assert.match(s.request.input, /Company: Tilly/);
   assert.match(s.request.input, /Founder: We ran a trial in one of their pubs\./);
   assert.match(s.request.instructions, /verdictCategory/);
+  assert.match(s.request.input, /CLOSING STATEMENT\nNot present/);
+  assert.match(s.request.instructions, /without inventing a close or penalising/);
+});
+
+test("closing statement is explicitly assessed in readiness, strengths and weaknesses", async t => {
+  const s = setup(t);
+  const { POST } = loadTs("src/app/api/generate-pitch-results/route.ts", { "@/lib/pitch-report": s.lib });
+  const closing = "This is the right moment because costs are rising. Investment funds multi-site tools. Our difference is integrated payments and margins.";
+  const response = await POST({ json: async () => ({ pitchData: { companyName: "Tilly" }, conversation: [
+    { role: "user", text: "Our earlier funding answer.", questionNumber: 6 },
+    { role: "ai", text: "Give your closing pitch.", questionNumber: 7 },
+    { role: "user", text: closing },
+    { role: "ai", text: "Putting your feedback together now.", questionNumber: 7 },
+  ] }) });
+  assert.equal((await response.json()).ok, true);
+  assert.ok(s.request.input.includes("CLOSING STATEMENT\n" + closing));
+  assert.match(s.request.instructions, /closing statement when deciding verdict and verdictCategory/);
+  assert.match(s.request.instructions, /observation about the closing pitch in strong or weak/);
+  assert.match(s.request.instructions, /Do not let a confident close override weak evidence/);
+  assert.match(s.request.instructions, /do not claim to know its duration/);
 });
