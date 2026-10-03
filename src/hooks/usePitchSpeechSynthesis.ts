@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { expandPitchSpokenNumbers } from "@/lib/pitch-spoken-numbers";
 
 const PITCH_VOICE_ID = "UEKYgullGqaF0keqT8Bu";
 
@@ -23,7 +24,7 @@ export function usePitchSpeechSynthesis() {
   }, []);
 
   function cleanTextForSpeech(text: string): string {
-    return text.replace(/\bread\b/gi, "look at");
+    return expandPitchSpokenNumbers(text.replace(/\bread\b/gi, "look at"));
   }
 
   function speakWithBrowser(text: string, onEnd?: () => void) {
