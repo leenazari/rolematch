@@ -150,6 +150,31 @@ test("background reports return immediately and are retrieved by their saved res
   assert.equal(s.options.maxRetries, 0);
 });
 
+test("fast feedback has two ordered chunks and cannot wait for a search tool", async t => {
+  const s = setup(t, { id: "resp_core", status: "queued" });
+  await s.lib.beginPitchReport("RETURN THIS EXACT JSON STRUCTURE:\nOld structure\nREQUIREMENTS PER SECTION\nRules\nQUICK MARKET AND COMPETITOR CHECK\nSearch first\nRetain all original critique sections", "Full transcript", undefined, "core");
+  assert.equal(s.request.tools, undefined);
+  assert.equal(s.request.tool_choice, undefined);
+  assert.equal(s.request.max_output_tokens, 4200);
+  const schema = s.request.text.format.schema;
+  assert.deepEqual(schema.required, ["first", "second"]);
+  assert.deepEqual(schema.properties.first.required, ["verdict", "verdictCategory", "strong"]);
+  assert.ok(schema.properties.second.required.includes("aiOpportunities"));
+  assert.ok(!schema.properties.second.required.includes("marketResearch"));
+  assert.doesNotMatch(s.request.instructions, /Search first|Old structure/);
+});
+
+test("parallel research has its own small budget and cannot rewrite the pitch verdict", async t => {
+  const s = setup(t, { id: "resp_market", status: "queued" });
+  await s.lib.beginPitchReport("QUICK MARKET AND COMPETITOR CHECK\nUse public categories only.\nRetain all original critique sections", "Transcript", undefined, "market");
+  assert.deepEqual(s.request.text.format.schema.required, ["marketResearch"]);
+  assert.equal(s.request.max_output_tokens, 1800);
+  assert.equal(s.request.max_tool_calls, 2);
+  assert.equal(s.request.tool_choice, "required");
+  assert.match(s.request.instructions, /Do not score the pitch/);
+  assert.match(s.request.instructions, /Never send private figures/);
+});
+
 test("a pre-update results tab gets refresh instructions without starting a paid report", async () => {
   const { validReportAccess } = loadTs("src/lib/pitch-report-job.ts", {
     "@/lib/pitch-report": {}, "@/lib/pitch-report-progress": {}, "@/lib/pitch-storage": {}, "@/lib/pitch-pdf": {},
