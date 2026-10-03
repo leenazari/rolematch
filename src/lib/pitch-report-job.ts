@@ -62,7 +62,7 @@ async function continueJob(job: Job, started: Awaited<ReturnType<typeof beginPit
       if (error) throw new Error("Report progress could not be saved.");
     });
     const response = await retrievePitchReport(started.id);
-    if (response.status !== "queued" && response.status !== "in_progress") await finishReport(job, response);
+    if (response.status !== "queued" && response.status !== "in_progress") await finishReport({ ...job, response_id: started.id }, response);
   } catch (error) {
     // A transport interruption leaves the same stored response available to polls.
     console.error("pitch-report stream interrupted", { name: (error as Error).name });
@@ -97,12 +97,28 @@ async function finishReport(job: Job, response: Awaited<ReturnType<typeof retrie
   let critique: PitchCritique;
   try { critique = parsePitchReport(response); }
   catch {
-    await updateJob(job.id, { status: "failed" });
+    const { error } = await pitchStorageClient().from("pitch_reports").update({ status: "failed" })
+      .eq("id", job.id).eq("response_id", job.response_id).eq("status", "processing").is("critique", null);
+    if (error) throw new Error("Saved reports are temporarily unavailable. Please try again.");
     throw new Error("The report could not be completed. Please try generating it again.");
   }
   const generatedAt = new Date().toISOString();
-  await updateJob(job.id, { critique, generated_at: generatedAt, token_usage: response.usage || null });
-  return completeJob({ ...job, critique, generated_at: generatedAt });
+  // The worker and a poll can finish together. Only the first may archive this
+  // response; every reader must use that same critique and source-check timestamp.
+  const { data, error } = await pitchStorageClient().from("pitch_reports").update({
+    critique, generated_at: generatedAt, token_usage: response.usage || null, updated_at: generatedAt,
+  }).eq("id", job.id).eq("response_id", job.response_id).eq("status", "processing")
+    .is("critique", null).select("*").maybeSingle();
+  if (error) throw new Error("The report could not be saved yet. Please try again.");
+  let saved = data as Job | null;
+  if (!saved) {
+    const result = await pitchStorageClient().from("pitch_reports").select("*")
+      .eq("id", job.id).eq("response_id", job.response_id).maybeSingle();
+    if (result.error) throw new Error("Saved reports are temporarily unavailable. Please try again.");
+    saved = result.data;
+  }
+  if (!saved?.critique) return pending;
+  return completeJob(saved);
 }
 
 async function completeJob(job: Job) {
