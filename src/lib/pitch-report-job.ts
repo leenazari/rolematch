@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { beginPitchReport, retrievePitchReport, readPitchReportStream, parsePitchReport, isPitchCritique } from "@/lib/pitch-report";
+import { waitUntil } from "@vercel/functions";
+import { beginPitchReport, consumePitchReportStream, retrievePitchReport, readPitchReportStream, parsePitchReport, isPitchCritique } from "@/lib/pitch-report";
 import { parsePartialPitchReport } from "@/lib/pitch-report-progress";
 import { pitchStorageClient, savePitchPdf, PITCH_PDF_BUCKET } from "@/lib/pitch-storage";
 import { renderPitchPdf } from "@/lib/pitch-pdf";
@@ -34,20 +35,47 @@ async function updateJob(id: string, fields: Record<string, unknown>) {
 }
 
 async function startJob(job: Job) {
+  let started: Awaited<ReturnType<typeof beginPitchReport>> | undefined;
   try {
-    const response = await beginPitchReport(job.report_instructions, job.report_input, job.model);
+    const response = started = await beginPitchReport(job.report_instructions, job.report_input, job.model);
     await updateJob(job.id, { response_id: response.id, status: "processing", streaming: response.streaming === true,
       stream_cursor: response.streamCursor ?? -1, stream_text: "", partial_critique: null });
+    if (response.iterator) waitUntil(continueJob(job, response));
     return pending;
   } catch (error) {
+    started?.controller?.abort();
     console.error("pitch-report start failed", { name: (error as Error).name });
     await updateJob(job.id, { status: "failed" });
     throw new Error("The report could not start. Please try generating it again.");
   }
 }
 
+async function continueJob(job: Job, started: Awaited<ReturnType<typeof beginPitchReport>>) {
+  try {
+    await consumePitchReportStream(started, async checkpoint => {
+      // A resumed reader may have advanced further. Never replace newer progress.
+      const { error } = await pitchStorageClient().from("pitch_reports").update({
+        stream_cursor: checkpoint.cursor, stream_text: checkpoint.text,
+        partial_critique: parsePartialPitchReport(checkpoint.text), updated_at: new Date().toISOString(),
+      }).eq("id", job.id).eq("response_id", started.id).lt("stream_cursor", checkpoint.cursor)
+        .eq("status", "processing").is("critique", null);
+      if (error) throw new Error("Report progress could not be saved.");
+    });
+    const response = await retrievePitchReport(started.id);
+    if (response.status !== "queued" && response.status !== "in_progress") await finishReport(job, response);
+  } catch (error) {
+    // A transport interruption leaves the same stored response available to polls.
+    console.error("pitch-report stream interrupted", { name: (error as Error).name });
+  }
+}
+
 async function reportProgress(job: Job, accessToken: string) {
   if (!job.streaming) return { ...pending, partial: job.partial_critique || undefined };
+  // The original stream is checkpointed by the background worker. Only resume it
+  // when progress is stale, avoiding a second connection on every UI poll.
+  if (Date.now() - new Date(job.updated_at).getTime() < 15_000) {
+    return { ...pending, partial: job.partial_critique || undefined };
+  }
   const checkpoint = await readPitchReportStream(job.response_id!, job.stream_cursor, job.stream_text);
   let current = job;
   if (checkpoint.cursor > job.stream_cursor) {
@@ -63,6 +91,18 @@ async function reportProgress(job: Job, accessToken: string) {
   }
   if (current.critique) return completeJob(current);
   return { ...pending, partial: current.partial_critique || undefined };
+}
+
+async function finishReport(job: Job, response: Awaited<ReturnType<typeof retrievePitchReport>>) {
+  let critique: PitchCritique;
+  try { critique = parsePitchReport(response); }
+  catch {
+    await updateJob(job.id, { status: "failed" });
+    throw new Error("The report could not be completed. Please try generating it again.");
+  }
+  const generatedAt = new Date().toISOString();
+  await updateJob(job.id, { critique, generated_at: generatedAt, token_usage: response.usage || null });
+  return completeJob({ ...job, critique, generated_at: generatedAt });
 }
 
 async function completeJob(job: Job) {
@@ -125,15 +165,7 @@ export async function runPitchReportJob(request: Request) {
   }
   const response = await retrievePitchReport(job.response_id);
   if (response.status === "queued" || response.status === "in_progress") return reportProgress(job, request.accessToken);
-  let critique: PitchCritique;
-  try { critique = parsePitchReport(response); }
-  catch {
-    await updateJob(job.id, { status: "failed" });
-    throw new Error("The report could not be completed. Please try generating it again.");
-  }
-  const generatedAt = new Date().toISOString();
-  await updateJob(job.id, { critique, generated_at: generatedAt, token_usage: response.usage || null });
-  return completeJob({ ...job, critique, generated_at: generatedAt });
+  return finishReport(job, response);
 }
 
 export async function downloadSavedPitchPdf(id: string, accessToken: string) {

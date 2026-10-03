@@ -10,11 +10,13 @@ function setup() {
   const rows = new Map(), files = new Map();
   const calls = { begin: 0, retrieve: 0, render: 0, save: 0, stream: [] };
   let uploadFails = false, response = { status: "in_progress" }, beginWait;
-  let streaming = false, streamCheckpoint, streamWait;
+  let streaming = false, streamCheckpoint, streamWait, creationStream = false, consume;
+  const background = [];
   class Query {
     constructor() { this.filters = []; this.operation = "select"; }
     select() { return this; }
     eq(key, value) { this.filters.push(row => row[key] === value); return this; }
+    lt(key, value) { this.filters.push(row => row[key] < value); return this; }
     is(key, value) { return this.eq(key, value); }
     insert(values) { this.operation = "insert"; this.values = values; return this; }
     update(values) { this.operation = "update"; this.values = values; return this; }
@@ -40,9 +42,12 @@ function setup() {
     calls.save++; if (uploadFails) throw new Error("Temporary storage failure"); files.set(path, pdf);
   } };
   const lib = loadTs("src/lib/pitch-report-job.ts", {
+    "@vercel/functions": { waitUntil: promise => background.push(promise) },
     "@/lib/pitch-storage": storage,
     "@/lib/pitch-report": {
-      beginPitchReport: async () => { calls.begin++; if (beginWait) await beginWait; return { id: "resp_test", status: "queued", streaming, streamCursor: 0 }; },
+      beginPitchReport: async () => { calls.begin++; if (beginWait) await beginWait; return { id: "resp_test", status: "queued", streaming, streamCursor: 0,
+        ...(creationStream ? { iterator: {}, controller: { abort() {} } } : {}) }; },
+      consumePitchReportStream: async (started, save) => consume(save),
       retrievePitchReport: async responseId => { calls.retrieve++; assert.equal(responseId, "resp_test"); return response; },
       readPitchReportStream: async (responseId, cursor, text) => { calls.stream.push({ responseId, cursor, text });
         const next = structuredClone(streamCheckpoint); if (streamWait) await streamWait; return next; },
@@ -54,14 +59,16 @@ function setup() {
   });
   const request = { id, accessToken, pitchData: { companyName: "Tilly" }, conversation: [{ role: "user", text: "Our closing pitch." }],
     instructions: "Report rules", input: "Complete transcript" };
-  return { lib, rows, files, calls, request, set uploadFails(value) { uploadFails = value; },
+  return { lib, rows, files, calls, request, background, set uploadFails(value) { uploadFails = value; },
     set response(value) { response = value; }, set beginWait(value) { beginWait = value; },
-    set streaming(value) { streaming = value; }, set streamCheckpoint(value) { streamCheckpoint = value; }, set streamWait(value) { streamWait = value; } };
+    set streaming(value) { streaming = value; }, set streamCheckpoint(value) { streamCheckpoint = value; }, set streamWait(value) { streamWait = value; },
+    set creationStream(value) { creationStream = value; }, set consume(value) { consume = value; } };
 }
 
 test("sections are saved before completion, resume from the stored cursor, and never create another generation", async () => {
   const s = setup(); s.streaming = true;
   await s.lib.runPitchReportJob(s.request);
+  s.rows.get(id).updated_at = "2000-01-01T00:00:00Z";
   s.streamCheckpoint = { cursor: 10, text: '{"verdict":"Almost ready.","strong":["Paying customers."]' };
   const first = await s.lib.runPitchReportJob({ id, accessToken });
   assert.equal(first.status, "processing");
@@ -70,6 +77,7 @@ test("sections are saved before completion, resume from the stored cursor, and n
   assert.equal(s.rows.get(id).pdf_path, null);
   assert.deepEqual(s.rows.get(id).partial_critique, first.partial);
   s.streamCheckpoint = { cursor: 20, text: '{"verdict":"Almost ready.","strong":["Paying customers."],"weak":["Clarify margins."]' };
+  s.rows.get(id).updated_at = "2000-01-01T00:00:00Z";
   const next = await s.lib.runPitchReportJob({ id, accessToken });
   assert.deepEqual(next.partial.weak, critique.weak);
   assert.equal(s.calls.stream[1].cursor, 10);
@@ -82,6 +90,7 @@ test("sections are saved before completion, resume from the stored cursor, and n
 test("a slower competing stream poll cannot overwrite a newer checkpoint", async () => {
   const s = setup(); s.streaming = true;
   await s.lib.runPitchReportJob(s.request);
+  s.rows.get(id).updated_at = "2000-01-01T00:00:00Z";
   let release; s.streamWait = new Promise(resolve => { release = resolve; });
   s.streamCheckpoint = { cursor: 5, text: '{"verdict":"Old preview"' };
   const slower = s.lib.runPitchReportJob({ id, accessToken });
@@ -93,6 +102,28 @@ test("a slower competing stream poll cannot overwrite a newer checkpoint", async
   assert.equal(s.rows.get(id).stream_cursor, 10);
   assert.equal(resumed.partial.verdict, critique.verdict);
   assert.deepEqual(resumed.partial.strong, critique.strong);
+  assert.equal(s.calls.begin, 1);
+});
+
+test("creation stream continues after returning, saves early sections and archives without another browser request", async () => {
+  const s = setup(); s.streaming = true; s.creationStream = true;
+  let release, saveProgress;
+  const wait = new Promise(resolve => { release = resolve; });
+  s.consume = async save => { saveProgress = save; await wait; };
+  const first = await s.lib.runPitchReportJob(s.request);
+  assert.equal(first.status, "processing");
+  assert.equal(s.background.length, 1);
+  await saveProgress({ cursor: 10, text: '{"verdict":"Almost ready.","strong":["Paying customers."]' });
+  const early = await s.lib.runPitchReportJob({ id, accessToken });
+  assert.deepEqual(early.partial, { verdict: critique.verdict, strong: critique.strong });
+  assert.equal(s.calls.stream.length, 0, "fresh progress does not open a competing stream");
+  await saveProgress({ cursor: 5, text: '{"verdict":"Stale"}' });
+  assert.equal(s.rows.get(id).stream_cursor, 10);
+  assert.equal(s.rows.get(id).partial_critique.verdict, critique.verdict);
+  s.response = { status: "completed", usage: { total_tokens: 200 } };
+  release(); await Promise.all(s.background);
+  assert.equal(s.rows.get(id).status, "ready");
+  assert.equal(s.files.size, 1);
   assert.equal(s.calls.begin, 1);
 });
 

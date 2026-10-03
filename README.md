@@ -56,12 +56,15 @@ and guest access tokens are hashed. PDF downloads require the matching report ID
 and secret access token; no public URLs or public listing policies are created.
 Administrators can find the copies in Supabase Storage and the report table.
 
-New generations start with `background: true, stream: true`. Each poll resumes the
-same response from its saved sequence number for at most eight seconds. The exact
-JSON prefix, sequence number and complete validated fields are checkpointed in the
-private report row before they are shown. An atomic cursor check prevents slower
-concurrent polls from overwriting newer progress. Refresh resumes the same paid
-generation. Older non-streaming jobs remain recoverable through normal polling.
+New generations start with `background: true, stream: true`. The creation stream
+stays open in a Vercel `waitUntil` task after the initial request returns, with a
+300-second function limit. It checkpoints the exact JSON prefix, sequence number
+and complete validated fields in the private report row while the browser polls.
+If progress becomes stale, polling resumes that same response from its saved
+sequence number for at most eight seconds. Atomic cursor checks prevent slower
+readers from overwriting newer progress. The worker also archives the final PDF
+if the browser disconnects. Refresh resumes the same paid generation. Older
+non-streaming jobs remain recoverable through normal polling.
 
 Incomplete strings or arrays stay hidden. The competitor section appears only after
 the completed response's source URLs are verified. The page keeps readable feedback
