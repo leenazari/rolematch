@@ -2,6 +2,32 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { loadTs } = require("./load-ts.cjs");
 
+test("progress is delivered before the completed report resolves, using the same report job", async t => {
+  const original = { fetch: global.fetch, sessionStorage: global.sessionStorage, setTimeout: global.setTimeout };
+  const storage = new Map();
+  global.sessionStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) };
+  global.setTimeout = callback => original.setTimeout(callback, 1);
+  t.after(() => Object.assign(global, original));
+  const requests = [], previews = [];
+  let release;
+  const final = new Promise(resolve => { release = resolve; });
+  global.fetch = async (_, options) => {
+    requests.push(JSON.parse(options.body));
+    if (requests.length === 1) return { json: async () => ({ ok: true, status: "processing", partial: { verdict: "Early feedback" } }) };
+    await final;
+    return { json: async () => ({ ok: true, status: "completed", data: { verdict: "Complete feedback" }, pdfSaved: true }) };
+  };
+  let completed = false;
+  const pending = loadTs("src/lib/pitch-report-client.ts").loadPitchReport({ companyName: "Tilly" }, [],
+    { signal: new AbortController().signal, onProgress: partial => previews.push(partial) }).then(value => { completed = true; return value; });
+  await new Promise(resolve => original.setTimeout(resolve, 10));
+  assert.deepEqual(previews, [{ verdict: "Early feedback" }]);
+  assert.equal(completed, false);
+  release();
+  assert.equal((await pending).pdfSaved, true);
+  assert.equal(requests[0].reportId, requests[1].reportId);
+});
+
 test("a refresh resumes the same report ID and credentials instead of starting another report", async t => {
   const globals = { fetch: global.fetch, sessionStorage: global.sessionStorage, setTimeout: global.setTimeout };
   const storage = new Map(), requests = [];

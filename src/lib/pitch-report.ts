@@ -137,7 +137,37 @@ function parameters(instructions: string, input: string, model = process.env.OPE
 }
 
 export async function beginPitchReport(instructions: string, input: string, model?: string) {
-  return client(25_000).responses.create({ ...parameters(instructions, input, model), background: true, store: true });
+  const stream = await client(25_000).responses.create({ ...parameters(instructions, input, model), background: true, store: true, stream: true });
+  try {
+    for await (const event of stream) {
+      if (event.type === "response.created") return { ...event.response, streaming: true, streamCursor: event.sequence_number };
+    }
+    throw new Error("The report did not start. Please try again.");
+  } finally {
+    // Close this connection, not the background generation. Later polls resume its stream.
+    stream.controller.abort();
+  }
+}
+
+export async function readPitchReportStream(responseId: string, cursor: number, text: string, budgetMs = 8_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), budgetMs);
+  try {
+    const stream = await client(12_000).responses.retrieve(responseId,
+      { stream: true, ...(cursor >= 0 ? { starting_after: cursor } : {}) }, { signal: controller.signal });
+    try {
+      for await (const event of stream) {
+        if (event.sequence_number <= cursor) continue;
+        cursor = event.sequence_number;
+        if (event.type === "response.output_text.delta") text += event.delta;
+        if (text.length > 200_000) throw new Error("Report output exceeds the supported size.");
+        if (["response.completed", "response.failed", "response.incomplete"].includes(event.type)) break;
+      }
+    } finally { stream.controller.abort(); }
+  } catch (error) {
+    if (!controller.signal.aborted) throw new Error("Your feedback is still preparing. Please try again to resume it.");
+  } finally { clearTimeout(timer); }
+  return { cursor, text };
 }
 
 export async function retrievePitchReport(responseId: string) {
@@ -201,14 +231,15 @@ export function parsePitchReport(response: { status?: string; output_text?: stri
   if (!isPitchCritique(report)) {
     throw new Error("The report format was invalid. Please try generating it again.");
   }
-  function scrub(value: any): any {
-    if (typeof value === "string") return value.replace(/[—–―−‒]/g, ", ").replace(/\s+-\s+/g, ", ")
-      .replace(/,\s*,/g, ",").replace(/\s+/g, " ").trim();
-    if (Array.isArray(value)) return value.map(scrub);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrub(v)]));
-    return value;
-  }
-  return scrub(report);
+  return scrubPitchReport(report);
+}
+
+export function scrubPitchReport<T>(value: T): T {
+  if (typeof value === "string") return value.replace(/[—–―−‒]/g, ", ").replace(/\s+-\s+/g, ", ")
+    .replace(/,\s*,/g, ",").replace(/\s+/g, " ").trim() as T;
+  if (Array.isArray(value)) return value.map(scrubPitchReport) as T;
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubPitchReport(v)])) as T;
+  return value;
 }
 
 export async function generatePitchReport(instructions: string, input: string): Promise<PitchCritique> {

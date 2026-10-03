@@ -147,6 +147,7 @@ export default function PitchResultsPage() {
   const router = useRouter();
   const [pitchData, setPitchData] = useState<PitchData | null>(null);
   const [critique, setCritique] = useState<PitchCritique | null>(null);
+  const [partialCritique, setPartialCritique] = useState<Partial<PitchCritique> | null>(null);
   const [error, setError] = useState("");
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -194,10 +195,12 @@ export default function PitchResultsPage() {
     setSavingPdf(true);
     if (upgradeAccess) { setEnhancingReport(true); setInsightsError(""); }
     try {
-      const result = await loadPitchReport(pd, conv, { signal: controller.signal, retry, existingCritique, generatedAt: cachedTime, access: upgradeAccess });
+      const result = await loadPitchReport(pd, conv, { signal: controller.signal, retry, existingCritique, generatedAt: cachedTime, access: upgradeAccess,
+        onProgress: partial => { if (!controller.signal.aborted) setPartialCritique(partial); } });
       if (controller.signal.aborted) return;
       if (upgradeAccess) sessionStorage.setItem("pitchperfect_report_access", JSON.stringify(upgradeAccess));
       setCritique(result.data);
+      setPartialCritique(null);
       setGeneratedAt(result.generatedAt);
       setSaveWarning(result.saveWarning || "");
       sessionStorage.setItem("pitchperfect_critique", JSON.stringify(result.data));
@@ -206,7 +209,7 @@ export default function PitchResultsPage() {
     } catch (e) {
       if (controller.signal.aborted) return;
       const message = e instanceof Error ? e.message : "Something went wrong. Please try again.";
-      if (upgradeAccess) setInsightsError(message);
+      if (upgradeAccess) { setPartialCritique(null); setInsightsError(message); }
       else if (existingCritique) setSaveWarning("Your report is ready, but its PDF copy has not saved yet. Please retry saving.");
       else setError(message);
     } finally {
@@ -246,7 +249,7 @@ export default function PitchResultsPage() {
     }
   }
 
-  if (error) {
+  if (error && !critique && !partialCritique) {
     return (
       <main className="min-h-screen mesh-bg-pitch flex items-center justify-center px-6">
         <div className="glass-card-strong rounded-3xl p-10 max-w-md text-center">
@@ -278,9 +281,11 @@ export default function PitchResultsPage() {
     );
   }
 
-  if (!critique) {
+  if (!critique && !partialCritique) {
     return <LoadingState companyName={pitchData?.companyName || ""} />;
   }
+
+  const report: Partial<PitchCritique> = { ...critique, ...partialCritique };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-12">
@@ -300,44 +305,58 @@ export default function PitchResultsPage() {
         <div className="flex justify-center mb-10">
           <button
             onClick={handleDownloadPdf}
-            disabled={downloadingPdf}
+            disabled={downloadingPdf || savingPdf || !critique}
             className="px-6 py-3 bg-white border-2 border-purple-300 text-purple-700 rounded-xl hover:bg-purple-50 font-medium disabled:opacity-40"
           >
-            {downloadingPdf ? "Building PDF..." : "Download as PDF"}
+            {savingPdf || !critique ? "Preparing complete PDF..." : downloadingPdf ? "Building PDF..." : "Download as PDF"}
           </button>
         </div>
+
+        {savingPdf ? <div role="status" className="mb-6 rounded-xl border border-purple-200 bg-purple-50 p-4 text-sm text-purple-900">
+          <p className="font-semibold mb-1">Report in progress</p>
+          <p>Read each section as it arrives. More feedback is on its way, and the complete PDF will be available when everything is ready.</p>
+        </div> : null}
+        {error ? <div role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+          <p>{error}</p>
+          <p className="mt-1">The feedback shown so far and your conversation are saved.</p>
+          <button disabled={savingPdf} className="mt-2 font-semibold underline disabled:opacity-50" onClick={() => {
+            setError("");
+            const conversation = sessionStorage.getItem("pitchperfect_conversation");
+            if (pitchData && conversation) generateCritique(pitchData, JSON.parse(conversation), true);
+          }}>Resume report</button>
+        </div> : null}
 
         {saveWarning ? (
           <div role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
             <p>{saveWarning}</p>
             <button disabled={savingPdf} className="mt-2 font-semibold underline disabled:opacity-50" onClick={() => {
               const conversation = sessionStorage.getItem("pitchperfect_conversation");
-              if (pitchData && conversation) generateCritique(pitchData, JSON.parse(conversation), false, critique, generatedAt);
+              if (pitchData && conversation && critique) generateCritique(pitchData, JSON.parse(conversation), false, critique, generatedAt);
             }}>{savingPdf ? "Saving PDF..." : "Retry saving PDF"}</button>
           </div>
         ) : null}
 
-        <section className="bg-purple-50 border-l-4 border-purple-600 rounded-r-2xl p-6 mb-8">
+        {report.verdict !== undefined ? <section className="bg-purple-50 border-l-4 border-purple-600 rounded-r-2xl p-6 mb-8">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-purple-700">
               Verdict
             </div>
-            {critique.verdictCategory ? (
-              <VerdictBadge category={critique.verdictCategory} />
+            {report.verdictCategory ? (
+              <VerdictBadge category={report.verdictCategory} />
             ) : null}
           </div>
           <p className="text-lg text-slate-800 leading-relaxed">
-            {critique.verdict}
+            {report.verdict}
           </p>
-        </section>
+        </section> : null}
 
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <section className="bg-white rounded-2xl p-6 border border-green-200 shadow-sm">
+        {report.strong || report.weak ? <div className="grid md:grid-cols-2 gap-6 mb-8">
+          {report.strong ? <section className="bg-white rounded-2xl p-6 border border-green-200 shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-wider text-green-700 mb-3">
               What's strong
             </div>
             <ul className="space-y-3">
-              {critique.strong.map(function (item, i) {
+              {report.strong.map(function (item, i) {
                 return (
                   <li key={i} className="text-sm text-slate-700 flex gap-2">
                     <span className="text-green-500 mt-0.5">✓</span>
@@ -346,14 +365,14 @@ export default function PitchResultsPage() {
                 );
               })}
             </ul>
-          </section>
+          </section> : null}
 
-          <section className="bg-white rounded-2xl p-6 border border-amber-200 shadow-sm">
+          {report.weak ? <section className="bg-white rounded-2xl p-6 border border-amber-200 shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-3">
               What's weak
             </div>
             <ul className="space-y-3">
-              {critique.weak.map(function (item, i) {
+              {report.weak.map(function (item, i) {
                 return (
                   <li key={i} className="text-sm text-slate-700 flex gap-2">
                     <span className="text-amber-500 mt-0.5">!</span>
@@ -362,27 +381,27 @@ export default function PitchResultsPage() {
                 );
               })}
             </ul>
-          </section>
-        </div>
+          </section> : null}
+        </div> : null}
 
-        {critique.fatalFlaw ? (
+        {report.fatalFlaw ? (
           <section className="bg-red-50 border-2 border-red-300 rounded-2xl p-6 mb-8">
             <div className="text-xs font-semibold uppercase tracking-wider text-red-700 mb-2">
               The fatal flaw
             </div>
             <p className="text-base text-red-900 leading-relaxed font-medium">
-              {critique.fatalFlaw}
+              {report.fatalFlaw}
             </p>
           </section>
         ) : null}
 
-        {critique.sectorConcerns && critique.sectorConcerns.length > 0 ? (
+        {report.sectorConcerns && report.sectorConcerns.length > 0 ? (
           <section className="bg-white rounded-2xl p-6 mb-8 border border-slate-200 shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-3">
               Sector specific concerns
             </div>
             <ul className="space-y-2">
-              {critique.sectorConcerns.map(function (item, i) {
+              {report.sectorConcerns.map(function (item, i) {
                 return (
                   <li key={i} className="text-sm text-slate-700 flex gap-2">
                     <span className="text-slate-400 mt-0.5">→</span>
@@ -394,21 +413,21 @@ export default function PitchResultsPage() {
           </section>
         ) : null}
 
-        <section className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-7 mb-8 border border-purple-200">
+        {report.revisedPitch !== undefined ? <section className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-7 mb-8 border border-purple-200">
           <div className="text-xs font-semibold uppercase tracking-wider text-purple-700 mb-3">
             How I would tell this story
           </div>
           <p className="text-base text-slate-800 leading-relaxed italic">
-            "{critique.revisedPitch}"
+            "{report.revisedPitch}"
           </p>
-        </section>
+        </section> : null}
 
-        <section className="bg-white rounded-2xl p-6 mb-8 border border-slate-200 shadow-sm">
+        {report.thirtyDayActions ? <section className="bg-white rounded-2xl p-6 mb-8 border border-slate-200 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-3">
             What to do in the next 30 days
           </div>
           <ol className="space-y-3 list-decimal list-inside">
-            {critique.thirtyDayActions.map(function (item, i) {
+            {report.thirtyDayActions.map(function (item, i) {
               return (
                 <li key={i} className="text-sm text-slate-700 leading-relaxed pl-1">
                   {item}
@@ -416,14 +435,14 @@ export default function PitchResultsPage() {
               );
             })}
           </ol>
-        </section>
+        </section> : null}
 
-        <section className="bg-white rounded-2xl p-6 mb-8 border border-slate-200 shadow-sm">
+        {report.vcQuestions ? <section className="bg-white rounded-2xl p-6 mb-8 border border-slate-200 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-4">
             Questions a real VC will ask, prepare for these
           </div>
           <div className="space-y-4">
-            {critique.vcQuestions.map(function (q, i) {
+            {report.vcQuestions.map(function (q, i) {
               return (
                 <div key={i} className="border-l-2 border-purple-300 pl-4">
                   <p className="text-sm font-semibold text-slate-900 mb-1">
@@ -436,10 +455,10 @@ export default function PitchResultsPage() {
               );
             })}
           </div>
-        </section>
+        </section> : null}
 
-        <ReportInsights critique={critique} />
-        {critique.aiOpportunities === undefined || !critique.marketResearch ? <section className="rounded-2xl bg-purple-50 border border-purple-200 p-6 mb-8">
+        <ReportInsights critique={report} />
+        {critique && (critique.aiOpportunities === undefined || !critique.marketResearch) ? <section className="rounded-2xl bg-purple-50 border border-purple-200 p-6 mb-8">
           <h2 className="font-semibold text-slate-900 mb-2">Add practical AI advice and a market check</h2>
           <p className="text-sm text-slate-600 mb-4">Use your saved conversation to add business-specific AI pilots and current competitor research. Your existing report stays available while these prepare.</p>
           <button disabled={savingPdf || enhancingReport} className="rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
@@ -450,7 +469,7 @@ export default function PitchResultsPage() {
           {insightsError ? <p role="alert" className="text-sm text-red-700 mt-3">{insightsError}</p> : null}
         </section> : null}
 
-        {generatedAt ? (
+        {generatedAt && !savingPdf ? (
           <p className="text-xs text-slate-400 text-center mt-3">
             Generated: {formatTimestamp(generatedAt)}
           </p>
