@@ -4,11 +4,13 @@ const { loadTs } = require("./load-ts.cjs");
 const id = "2d1d0972-cbfa-4622-b916-829ce1214088", accessToken = "ab".repeat(32);
 const critique = { verdict: "Almost ready.", verdictCategory: "almost", strong: ["Paying customers."], weak: ["Clarify margins."],
   fatalFlaw: null, sectorConcerns: [], revisedPitch: "A venue platform.", thirtyDayActions: [], vcQuestions: [], glossary: [] };
+const progressParser = loadTs("src/lib/pitch-report-progress.ts", { "@/lib/pitch-report": loadTs("src/lib/pitch-report.ts") });
 
 function setup() {
   const rows = new Map(), files = new Map();
-  const calls = { begin: 0, retrieve: 0, render: 0, save: 0 };
+  const calls = { begin: 0, retrieve: 0, render: 0, save: 0, stream: [] };
   let uploadFails = false, response = { status: "in_progress" }, beginWait;
+  let streaming = false, streamCheckpoint, streamWait;
   class Query {
     constructor() { this.filters = []; this.operation = "select"; }
     select() { return this; }
@@ -40,18 +42,59 @@ function setup() {
   const lib = loadTs("src/lib/pitch-report-job.ts", {
     "@/lib/pitch-storage": storage,
     "@/lib/pitch-report": {
-      beginPitchReport: async () => { calls.begin++; if (beginWait) await beginWait; return { id: "resp_test", status: "queued" }; },
+      beginPitchReport: async () => { calls.begin++; if (beginWait) await beginWait; return { id: "resp_test", status: "queued", streaming, streamCursor: 0 }; },
       retrievePitchReport: async responseId => { calls.retrieve++; assert.equal(responseId, "resp_test"); return response; },
+      readPitchReportStream: async (responseId, cursor, text) => { calls.stream.push({ responseId, cursor, text });
+        const next = structuredClone(streamCheckpoint); if (streamWait) await streamWait; return next; },
       parsePitchReport: value => { if (value.status !== "completed") throw new Error("Not completed"); return critique; },
       isPitchCritique: value => value?.verdict === critique.verdict,
     },
+    "@/lib/pitch-report-progress": progressParser,
     "@/lib/pitch-pdf": { renderPitchPdf: async () => { calls.render++; return Buffer.from("%PDF-test\n%%EOF"); } },
   });
   const request = { id, accessToken, pitchData: { companyName: "Tilly" }, conversation: [{ role: "user", text: "Our closing pitch." }],
     instructions: "Report rules", input: "Complete transcript" };
   return { lib, rows, files, calls, request, set uploadFails(value) { uploadFails = value; },
-    set response(value) { response = value; }, set beginWait(value) { beginWait = value; } };
+    set response(value) { response = value; }, set beginWait(value) { beginWait = value; },
+    set streaming(value) { streaming = value; }, set streamCheckpoint(value) { streamCheckpoint = value; }, set streamWait(value) { streamWait = value; } };
 }
+
+test("sections are saved before completion, resume from the stored cursor, and never create another generation", async () => {
+  const s = setup(); s.streaming = true;
+  await s.lib.runPitchReportJob(s.request);
+  s.streamCheckpoint = { cursor: 10, text: '{"verdict":"Almost ready.","strong":["Paying customers."]' };
+  const first = await s.lib.runPitchReportJob({ id, accessToken });
+  assert.equal(first.status, "processing");
+  assert.deepEqual(first.partial, { verdict: critique.verdict, strong: critique.strong });
+  assert.equal(s.rows.get(id).critique, null);
+  assert.equal(s.rows.get(id).pdf_path, null);
+  assert.deepEqual(s.rows.get(id).partial_critique, first.partial);
+  s.streamCheckpoint = { cursor: 20, text: '{"verdict":"Almost ready.","strong":["Paying customers."],"weak":["Clarify margins."]' };
+  const next = await s.lib.runPitchReportJob({ id, accessToken });
+  assert.deepEqual(next.partial.weak, critique.weak);
+  assert.equal(s.calls.stream[1].cursor, 10);
+  assert.equal(s.calls.stream[1].text, s.calls.stream[0].text + '{"verdict":"Almost ready.","strong":["Paying customers."]');
+  s.response = { status: "completed", usage: { total_tokens: 200 } };
+  assert.equal((await s.lib.runPitchReportJob({ id, accessToken })).pdfSaved, true);
+  assert.equal(s.calls.begin, 1);
+});
+
+test("a slower competing stream poll cannot overwrite a newer checkpoint", async () => {
+  const s = setup(); s.streaming = true;
+  await s.lib.runPitchReportJob(s.request);
+  let release; s.streamWait = new Promise(resolve => { release = resolve; });
+  s.streamCheckpoint = { cursor: 5, text: '{"verdict":"Old preview"' };
+  const slower = s.lib.runPitchReportJob({ id, accessToken });
+  await new Promise(resolve => setImmediate(resolve));
+  s.streamWait = null;
+  s.streamCheckpoint = { cursor: 10, text: '{"verdict":"Almost ready.","strong":["Paying customers."]' };
+  await s.lib.runPitchReportJob({ id, accessToken });
+  release(); const resumed = await slower;
+  assert.equal(s.rows.get(id).stream_cursor, 10);
+  assert.equal(resumed.partial.verdict, critique.verdict);
+  assert.deepEqual(resumed.partial.strong, critique.strong);
+  assert.equal(s.calls.begin, 1);
+});
 
 test("persist before generating, poll the same response, and automatically save the PDF before Download", async () => {
   const s = setup();

@@ -7,7 +7,7 @@ function safeLink(url: string) {
   } catch { return null; }
 }
 
-export function ReportInsights({ critique }: { critique: PitchCritique }) {
+export function ReportInsights({ critique }: { critique: Partial<PitchCritique> }) {
   const market = critique.marketResearch;
   const sources = new Map((market?.sources || []).filter(source => safeLink(source.url)).map(source => [source.url, source.title]));
   return <>

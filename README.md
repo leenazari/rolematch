@@ -33,8 +33,10 @@ recording continues and the UI explains that the transcript will appear after St
 
 ## Saved reports
 
-Report generation runs in OpenAI background mode and the page polls for completion,
-so longer reports no longer depend on a single 45-second request. The key needs
+Report generation runs in OpenAI background mode with a resumable stream. The page
+shows complete feedback sections while the rest of the report is still generating,
+so founders can start reading without waiting for the full document. Longer reports
+do not depend on a single 45-second request. The key needs
 Responses read and write permissions. Each session gets a report ID and a random
 access token, stored before the first request. Refresh and Retry reuse that job.
 OpenAI stores the background response so it can be retrieved; completed reports
@@ -42,8 +44,8 @@ are retained privately in Supabase.
 
 Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or the legacy
 `SUPABASE_SERVICE_ROLE_KEY`, only if legacy keys are enabled) in Vercel Production and Preview. These are server-only
-variables. Apply the `pitch_report_archive` migration in `supabase/migrations`.
-It is already applied to RoleMatch project `ryrseyvgfmrmiqngkvxs`.
+variables. Apply the `pitch_report_archive` and `pitch_report_progress` migrations in
+`supabase/migrations`. They are applied to RoleMatch project `ryrseyvgfmrmiqngkvxs`.
 Use a modern `sb_secret_` key for this project; its legacy keys are disabled.
 
 The server creates the private `pitch-reports` Storage bucket on first use and
@@ -53,6 +55,20 @@ timestamps and PDF path. RLS is enabled, direct anon/authenticated access is rev
 and guest access tokens are hashed. PDF downloads require the matching report ID
 and secret access token; no public URLs or public listing policies are created.
 Administrators can find the copies in Supabase Storage and the report table.
+
+New generations start with `background: true, stream: true`. Each poll resumes the
+same response from its saved sequence number for at most eight seconds. The exact
+JSON prefix, sequence number and complete validated fields are checkpointed in the
+private report row before they are shown. An atomic cursor check prevents slower
+concurrent polls from overwriting newer progress. Refresh resumes the same paid
+generation. Older non-streaming jobs remain recoverable through normal polling.
+
+Incomplete strings or arrays stay hidden. The competitor section appears only after
+the completed response's source URLs are verified. The page keeps readable feedback
+if the connection is interrupted and offers **Resume report**. **Download as PDF**
+is enabled when the complete validated report is available; it includes all sections,
+including AI opportunities and market research. Showing sections early adds no extra
+model generation or web search calls.
 
 If PDF storage fails, the critique remains visible and saved. Retry saving PDF
 only retries rendering/uploading the copy. It does not generate a new critique.

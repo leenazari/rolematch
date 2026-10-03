@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { beginPitchReport, retrievePitchReport, parsePitchReport, isPitchCritique } from "@/lib/pitch-report";
+import { beginPitchReport, retrievePitchReport, readPitchReportStream, parsePitchReport, isPitchCritique } from "@/lib/pitch-report";
+import { parsePartialPitchReport } from "@/lib/pitch-report-progress";
 import { pitchStorageClient, savePitchPdf, PITCH_PDF_BUCKET } from "@/lib/pitch-storage";
 import { renderPitchPdf } from "@/lib/pitch-pdf";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
@@ -9,6 +10,7 @@ type Job = {
   report_input: string; report_instructions: string; model: string; response_id: string | null;
   status: "starting" | "processing" | "ready" | "failed";
   critique: PitchCritique | null; pdf_path: string | null; generated_at: string | null; updated_at: string;
+  streaming: boolean; stream_cursor: number; stream_text: string; partial_critique: Partial<PitchCritique> | null;
 };
 type Request = { id: string; accessToken: string; pitchData?: PitchData; conversation?: PitchMessage[];
   instructions?: string; input?: string; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string };
@@ -34,13 +36,33 @@ async function updateJob(id: string, fields: Record<string, unknown>) {
 async function startJob(job: Job) {
   try {
     const response = await beginPitchReport(job.report_instructions, job.report_input, job.model);
-    await updateJob(job.id, { response_id: response.id, status: "processing" });
+    await updateJob(job.id, { response_id: response.id, status: "processing", streaming: response.streaming === true,
+      stream_cursor: response.streamCursor ?? -1, stream_text: "", partial_critique: null });
     return pending;
   } catch (error) {
     console.error("pitch-report start failed", { name: (error as Error).name });
     await updateJob(job.id, { status: "failed" });
     throw new Error("The report could not start. Please try generating it again.");
   }
+}
+
+async function reportProgress(job: Job, accessToken: string) {
+  if (!job.streaming) return { ...pending, partial: job.partial_critique || undefined };
+  const checkpoint = await readPitchReportStream(job.response_id!, job.stream_cursor, job.stream_text);
+  let current = job;
+  if (checkpoint.cursor > job.stream_cursor) {
+    const partial = parsePartialPitchReport(checkpoint.text);
+    // Competing polls may replay the same events. Only one can advance this checkpoint.
+    const { data, error } = await pitchStorageClient().from("pitch_reports").update({
+      stream_cursor: checkpoint.cursor, stream_text: checkpoint.text, partial_critique: partial,
+      updated_at: new Date().toISOString(),
+    }).eq("id", job.id).eq("response_id", job.response_id).eq("stream_cursor", job.stream_cursor)
+      .eq("status", "processing").is("critique", null).select("*").maybeSingle();
+    if (error) throw new Error("Your feedback could not be saved yet. Please try again to resume it.");
+    current = data || await findJob(job.id, accessToken) || job;
+  }
+  if (current.critique) return completeJob(current);
+  return { ...pending, partial: current.partial_critique || undefined };
 }
 
 async function completeJob(job: Job) {
@@ -87,7 +109,8 @@ export async function runPitchReportJob(request: Request) {
     if (!request.retry) throw new Error("The report could not be completed. Please try generating it again.");
     // Only one concurrent retry may claim this job.
     const { data, error } = await pitchStorageClient().from("pitch_reports").update({ status: "starting",
-      response_id: null, updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", "failed").select("*").maybeSingle();
+      response_id: null, stream_cursor: -1, stream_text: "", partial_critique: null,
+      updated_at: new Date().toISOString() }).eq("id", job.id).eq("status", "failed").select("*").maybeSingle();
     if (error) throw new Error("The report could not restart yet. Please try again.");
     return data ? startJob(data) : pending;
   }
@@ -101,7 +124,7 @@ export async function runPitchReportJob(request: Request) {
     return pending;
   }
   const response = await retrievePitchReport(job.response_id);
-  if (response.status === "queued" || response.status === "in_progress") return pending;
+  if (response.status === "queued" || response.status === "in_progress") return reportProgress(job, request.accessToken);
   let critique: PitchCritique;
   try { critique = parsePitchReport(response); }
   catch {

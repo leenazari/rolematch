@@ -28,6 +28,7 @@ function pause(signal: AbortSignal) {
 
 export async function loadPitchReport(pitchData: PitchData, conversation: PitchMessage[], options: {
   signal: AbortSignal; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string; access?: ReportAccess;
+  onProgress?: (partial: Partial<PitchCritique>) => void;
 }) {
   const access = options.access || reportAccess();
   const started = Date.now();
@@ -45,6 +46,7 @@ export async function loadPitchReport(pitchData: PitchData, conversation: PitchM
       failures = 0;
       first = false;
       if (result.status === "completed") return result as { data: PitchCritique; generatedAt: string; pdfSaved: boolean; saveWarning?: string };
+      if (result.partial && Object.keys(result.partial).length) options.onProgress?.(result.partial);
     } catch (error) {
       if (options.signal.aborted) throw error;
       if (++failures >= 3) throw error;

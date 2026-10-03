@@ -28,7 +28,13 @@ function setup(t, response = { status: "completed", output_text: JSON.stringify(
   class OpenAI {
     constructor(config) {
       options = config;
-      this.responses = { create: async body => { request = body; return response; } };
+      this.responses = { create: async body => {
+        request = body;
+        if (!body.stream) return response;
+        return { controller: { abort() {} }, async *[Symbol.asyncIterator]() {
+          yield { type: "response.created", sequence_number: 0, response };
+        } };
+      } };
     }
   }
   const lib = loadTs("src/lib/pitch-report.ts", { openai: OpenAI });
@@ -138,6 +144,7 @@ test("background reports return immediately and are retrieved by their saved res
   const started = await s.lib.beginPitchReport("Instructions", "Transcript");
   assert.equal(started.id, "resp_background");
   assert.equal(s.request.background, true);
+  assert.equal(s.request.stream, true);
   assert.equal(s.request.store, true);
   assert.equal(s.options.timeout, 25000);
   assert.equal(s.options.maxRetries, 0);
@@ -145,7 +152,7 @@ test("background reports return immediately and are retrieved by their saved res
 
 test("a pre-update results tab gets refresh instructions without starting a paid report", async () => {
   const { validReportAccess } = loadTs("src/lib/pitch-report-job.ts", {
-    "@/lib/pitch-report": {}, "@/lib/pitch-storage": {}, "@/lib/pitch-pdf": {},
+    "@/lib/pitch-report": {}, "@/lib/pitch-report-progress": {}, "@/lib/pitch-storage": {}, "@/lib/pitch-pdf": {},
   });
   let started = false;
   const { POST } = loadTs("src/app/api/generate-pitch-results/route.ts", {
