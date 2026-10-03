@@ -35,9 +35,11 @@ const TEST_CONVERSATION_TILLY: PitchMessage[] = [
   { role: "user", text: "There are roughly 28,000 independent venues in our serviceable UK market. Pubs, cafes, restaurants doing £10k to £60k a month. We find them through a few channels. Direct outreach to local trade associations, partnerships with hospitality consultants, and word of mouth from existing customers. Word of mouth is our biggest channel actually, accounts for about 40 percent of new customers." },
   { role: "ai", text: "Helpful. Let me ask about the business model. If I bought one customer for you, how much do they make you in their first year, and how much did it cost to find them?", questionNumber: 5 },
   { role: "user", text: "Average customer pays us £49 a month for software plus 1.4 percent on their transaction volume. The average venue does about £25k a month in card transactions, so we make about £350 a month per customer total, £4,200 a year. CAC is roughly £600 because most of our growth is word of mouth and direct outreach. Gross margin on the software is 92 percent, on the payments side it's about 35 percent after interchange." },
-  { role: "ai", text: "Got it. Last one. What are you raising and what does the next 18 months look like with that money?", questionNumber: 6 },
+  { role: "ai", text: "Got it. What are you raising and what does the next 18 months look like with that money?", questionNumber: 6 },
   { role: "user", text: "We're raising £750k seed at £4M pre-money. £280k for GTM, two sales hires and a senior marketer. £320k for engineering, two senior engineers to ship the inventory module and multi-site dashboards. £150k runway. By end of 18 months we want to be at 400 paying venues, £25k MRR plus £35k a month payments, multi-site dashboard live to unlock the small chain segment." },
-  { role: "ai", text: "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.", questionNumber: 6 },
+  { role: "ai", text: "OK, and in closing, could you give me a 30-second pitch on why now is the right time in the market for your product, why you should raise investment, and what makes you different from anyone else?", questionNumber: 7 },
+  { role: "user", text: "Hospitality operators need to protect thin margins now. We already have 47 paying venues, and this investment funds our sales team and the inventory and multi-site tools they need. Our difference is integrated payments and margin reporting built by a team with direct hospitality experience.", questionNumber: 7 },
+  { role: "ai", text: "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.", questionNumber: 7 },
 ];
 
 const TEST_PITCH_WEAK: PitchData = {
@@ -67,9 +69,11 @@ const TEST_CONVERSATION_WEAK: PitchMessage[] = [
   { role: "user", text: "The market is huge. There are thousands of mid-market companies in the UK that could benefit from our solution. The TAM is something like £5 billion globally." },
   { role: "ai", text: "Helpful. The business model. If I bought one customer for you, how much do they make you in their first year, and how much did it cost to find them?", questionNumber: 5 },
   { role: "user", text: "We haven't fully figured out our pricing yet but we're thinking enterprise SaaS pricing, probably £30k to £50k a year per customer. CAC we'll figure out post-launch." },
-  { role: "ai", text: "Got it. Last one. What are you raising and what does the next 18 months look like?", questionNumber: 6 },
+  { role: "ai", text: "Got it. What are you raising and what does the next 18 months look like?", questionNumber: 6 },
   { role: "user", text: "We're looking to raise around £1M to £2M for our seed round. We'll use it to build out the team, scale our marketing, and acquire customers." },
-  { role: "ai", text: "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.", questionNumber: 6 },
+  { role: "ai", text: "OK, and in closing, could you give me a 30-second pitch on why now is the right time in the market for your product, why you should raise investment, and what makes you different from anyone else?", questionNumber: 7 },
+  { role: "user", text: "AI is changing everything and we want to be the leading customer engagement platform. Investment will help us grow the team and acquire customers. We believe our technology will be better than anything else on the market.", questionNumber: 7 },
+  { role: "ai", text: "Right, that's everything I need. Putting your feedback together now, it'll be on your screen in a moment.", questionNumber: 7 },
 ];
 
 export default function PitchPage() {

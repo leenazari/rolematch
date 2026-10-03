@@ -63,6 +63,11 @@ PROMPT_PARTS.push("");
 PROMPT_PARTS.push("UNCERTAINTY");
 PROMPT_PARTS.push("If the conversation didn't surface enough on a topic, say so. 'Not enough info to assess X' is better than fabricating a judgment. If you don't have current sector data, say 'I don't have current data on X' rather than inventing.");
 PROMPT_PARTS.push("");
+PROMPT_PARTS.push("CLOSING PITCH ASSESSMENT");
+PROMPT_PARTS.push("The final answer is a requested 30-second closing pitch. Assess how clearly and credibly it connects: why this is the right moment in the market, why investment is needed now and what it enables, and what makes the product different from alternatives. Judge the case for investment, not just polished delivery. Check these claims against the earlier answers and one-pager. Do not let a confident close override weak evidence or contradictions.");
+PROMPT_PARTS.push("Use the closing statement when deciding verdict and verdictCategory, alongside all six normal topics. Include at least one specific observation about the closing pitch in strong or weak, and explain what worked or what was missing. Where needed, give a concrete improvement in thirtyDayActions and strengthen the close in revisedPitch using only supplied evidence.");
+PROMPT_PARTS.push("Thirty seconds is a target, not a measured limit. You have text, not audio timing, so do not claim to know its duration or penalise exact timing. If the closing statement is absent in an older conversation, assess the available answers without inventing a close or penalising the founder for a question they were never asked.");
+PROMPT_PARTS.push("");
 PROMPT_PARTS.push("RETURN THIS EXACT JSON STRUCTURE:");
 PROMPT_PARTS.push("");
 PROMPT_PARTS.push("{");
@@ -117,6 +122,9 @@ export async function POST(req: NextRequest) {
       .map(function (m) { return (m.role === "ai" ? "Investor" : "Founder") + ": " + m.text; })
       .join("\n\n");
 
+    const closingAnswer = conversation.find((m, index) => m.role === "user" &&
+      (m.questionNumber === 7 || (index > 0 && conversation[index - 1].role === "ai" && conversation[index - 1].questionNumber === 7)));
+
     const pitchSummary =
       "Company: " + pitchData.companyName +
       "\nOne-liner: " + pitchData.oneLineDescription +
@@ -132,6 +140,7 @@ export async function POST(req: NextRequest) {
     const userPrompt =
       "PITCH ONE-PAGER\n" + pitchSummary +
       "\n\nFULL CONVERSATION TRANSCRIPT\n" + conversationLog +
+      "\n\nCLOSING STATEMENT\n" + (closingAnswer?.text || "Not present in this conversation. Assess the available answers.") +
       "\n\nGenerate the critique JSON now. No preamble. No code fences. Just the JSON.";
 
     const data = await generatePitchReport(RESULTS_PROMPT, userPrompt);

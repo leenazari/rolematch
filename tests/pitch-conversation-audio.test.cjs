@@ -84,5 +84,59 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
   const posted = JSON.parse(requests.filter(request => request.url === "/api/pitch-next-question").at(-1).body);
   const answers = posted.history.filter(message => message.role === "user");
   assert.deepEqual(answers.map(answer => answer.text), [text + " Next month."]);
+  assert.equal(answers[0].questionNumber, 1);
   assert.equal(transcriptions, 2);
+});
+
+test("the screen waits for a reviewed closing answer and includes it in the stored report conversation", async t => {
+  const storage = new Map([["pitchperfect_data", JSON.stringify({ companyName: "Tilly" })]]);
+  const originals = { sessionStorage: global.sessionStorage, fetch: global.fetch };
+  global.sessionStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) };
+  const { POST } = loadTs("src/app/api/pitch-next-question/route.ts", {
+    "@/lib/anthropic": { HAIKU: "test", anthropic: { messages: { create: async () => ({
+      content: [{ type: "text", text: JSON.stringify({ text: "The next topic?", moveOn: true, finished: false }) }],
+    }) } } },
+  });
+  global.fetch = (url, request) => POST({ json: async () => JSON.parse(request.body) });
+  const destinations = [], spoken = [];
+  const router = { push: url => destinations.push(url) };
+  const { default: Page } = loadTs("src/app/pitch/conversation/page.tsx", {
+    "next/navigation": { useRouter: () => router }, "@vercel/analytics": { track() {} },
+    "@/hooks/usePitchAudioRecorder": { usePitchAudioRecorder: () => ({ supported: false, status: "idle",
+      liveText: "", liveStatus: "unavailable", reset() {} }) },
+    "@/hooks/usePitchSpeechSynthesis": { usePitchSpeechSynthesis: () => ({
+      speak: (text, done) => { spoken.push(text); done(); }, speaking: false, stopSpeaking() {},
+    }) }, "@/components/VoiceOrb": () => null,
+  });
+  let root;
+  await act(async () => { root = create(React.createElement(Page)); });
+  t.after(() => {
+    act(() => root.unmount());
+    Object.assign(global, originals);
+  });
+  const button = label => root.root.findAllByType("button").find(node => node.children.join("") === label);
+  async function answer(text) {
+    await act(async () => button("Type my answer").props.onClick());
+    act(() => root.root.findByType("textarea").props.onChange({ target: { value: text } }));
+    await act(async () => button("Send my answer").props.onClick());
+  }
+  await act(async () => button("Start the conversation").props.onClick());
+  await act(async () => root.root.findByType("video").props.onEnded());
+  for (let number = 1; number <= 6; number++) await answer("Answer " + number);
+  assert.ok(root.root.findAllByType("p").some(node => node.children.join("") === "Closing pitch · about 30 seconds"));
+  assert.match(spoken.at(-1), /30-second pitch/);
+  assert.deepEqual(destinations, []);
+  assert.equal(storage.has("pitchperfect_conversation"), false);
+  await act(async () => button("Type my answer").props.onClick());
+  assert.equal(button("Send my answer").props.disabled, true);
+  const closing = "Rising costs make this urgent. Funding builds the tools our paying customers need. Our integrated reporting makes us different.";
+  act(() => root.root.findByType("textarea").props.onChange({ target: { value: closing } }));
+  assert.deepEqual(destinations, []);
+  await act(async () => button("Send my answer").props.onClick());
+  assert.deepEqual(destinations, ["/pitch/results"]);
+  const conversation = JSON.parse(storage.get("pitchperfect_conversation"));
+  const answers = conversation.filter(message => message.role === "user");
+  assert.equal(answers.length, 7);
+  assert.deepEqual(answers.at(-1), { role: "user", text: closing, questionNumber: 7 });
+  assert.match(conversation.at(-1).text, /Putting your feedback together now/);
 });

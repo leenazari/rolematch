@@ -180,7 +180,7 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
   async function handleSendAnswer() {
     if (!draftAnswer.trim()) return;
     hardReset();
-    const userMsg: PitchMessage = { role: "user", text: draftAnswer.trim() };
+    const userMsg: PitchMessage = { role: "user", text: draftAnswer.trim(), questionNumber: currentQuestion };
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
     setDraftAnswer("");
@@ -216,8 +216,8 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
           <div className="text-sm font-semibold text-purple-600 mb-3 tracking-widest uppercase">
             Pitch Perfect
           </div>
-          {!finished && hasStarted && !introPlaying && currentQuestion <= 6 ? (
-            <p className="text-slate-500 text-sm">Question {Math.min(currentQuestion, 6)} of 6</p>
+          {!finished && hasStarted && !introPlaying ? (
+            <p className="text-slate-500 text-sm">{currentQuestion === 7 ? "Closing pitch · about 30 seconds" : `Question ${currentQuestion} of 6`}</p>
           ) : null}
         </div>
 
@@ -230,7 +230,7 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
               Ready to pitch {pitchData.companyName}?
             </h1>
             <p className="text-slate-600 mb-2">
-              I'll ask six questions about the business. The conversation is friendly. The honest written feedback comes after.
+              I'll ask six questions about the business, then invite you to give a 30-second closing pitch. The conversation is friendly. The honest written feedback comes after.
             </p>
             <p className="text-slate-500 text-sm mb-8">
               Speak naturally. You can also edit your answer before sending.
