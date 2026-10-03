@@ -12,6 +12,7 @@ function setup() {
   let uploadFails = false, response = { status: "in_progress" }, beginWait;
   let streaming = false, streamCheckpoint, streamWait, creationStream = false, consume;
   const background = [];
+  let parseResult = () => critique;
   class Query {
     constructor() { this.filters = []; this.operation = "select"; }
     select() { return this; }
@@ -51,7 +52,7 @@ function setup() {
       retrievePitchReport: async responseId => { calls.retrieve++; assert.equal(responseId, "resp_test"); return response; },
       readPitchReportStream: async (responseId, cursor, text) => { calls.stream.push({ responseId, cursor, text });
         const next = structuredClone(streamCheckpoint); if (streamWait) await streamWait; return next; },
-      parsePitchReport: value => { if (value.status !== "completed") throw new Error("Not completed"); return critique; },
+      parsePitchReport: value => { if (value.status !== "completed") throw new Error("Not completed"); return parseResult(); },
       isPitchCritique: value => value?.verdict === critique.verdict,
     },
     "@/lib/pitch-report-progress": progressParser,
@@ -62,7 +63,8 @@ function setup() {
   return { lib, rows, files, calls, request, background, set uploadFails(value) { uploadFails = value; },
     set response(value) { response = value; }, set beginWait(value) { beginWait = value; },
     set streaming(value) { streaming = value; }, set streamCheckpoint(value) { streamCheckpoint = value; }, set streamWait(value) { streamWait = value; },
-    set creationStream(value) { creationStream = value; }, set consume(value) { consume = value; } };
+    set creationStream(value) { creationStream = value; }, set consume(value) { consume = value; },
+    set parseResult(value) { parseResult = value; } };
 }
 
 test("sections are saved before completion, resume from the stored cursor, and never create another generation", async () => {
@@ -160,6 +162,25 @@ test("simultaneous page requests do not create another paid generation", async (
   assert.equal((await s.lib.runPitchReportJob(s.request)).status, "processing");
   assert.equal(s.calls.begin, 1);
   release(); await first;
+});
+
+test("simultaneous completion requests return the first archived critique without changing its timestamp", async () => {
+  const s = setup();
+  await s.lib.runPitchReportJob(s.request);
+  s.response = { status: "completed", usage: { total_tokens: 200 } };
+  let parses = 0;
+  s.parseResult = () => ({ ...critique, verdict: `Snapshot ${++parses}` });
+  const [first, second] = await Promise.all([
+    s.lib.runPitchReportJob({ id, accessToken }), s.lib.runPitchReportJob({ id, accessToken }),
+  ]);
+  assert.equal(parses, 2, "both readers observed the final response before it was archived");
+  assert.equal(s.rows.get(id).critique.verdict, "Snapshot 1");
+  assert.deepEqual(first.data, second.data);
+  assert.equal(first.generatedAt, second.generatedAt);
+  const repeated = await s.lib.runPitchReportJob({ id, accessToken });
+  assert.deepEqual(repeated.data, first.data);
+  assert.equal(repeated.generatedAt, first.generatedAt);
+  assert.equal(s.calls.begin, 1);
 });
 
 test("failed PDF saving keeps the critique and retries only storage", async () => {
