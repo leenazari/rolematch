@@ -7,7 +7,7 @@ exports.loadTs = function (relativePath, mocks = {}, transform = source => sourc
   const filename = path.resolve(__dirname, "..", relativePath);
   const source = transform(fs.readFileSync(filename, "utf8"));
   const compiled = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const compiledModule = new Module(filename, module);
   compiledModule.filename = filename;
