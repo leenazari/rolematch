@@ -128,3 +128,22 @@ test("background reports return immediately and are retrieved by their saved res
   assert.equal(s.options.timeout, 25000);
   assert.equal(s.options.maxRetries, 0);
 });
+
+test("a pre-update results tab gets refresh instructions without starting a paid report", async () => {
+  const { validReportAccess } = loadTs("src/lib/pitch-report-job.ts", {
+    "@/lib/pitch-report": {}, "@/lib/pitch-storage": {}, "@/lib/pitch-pdf": {},
+  });
+  let started = false;
+  const { POST } = loadTs("src/app/api/generate-pitch-results/route.ts", {
+    "@/lib/pitch-report-job": { validReportAccess, runPitchReportJob: async () => { started = true; } },
+  });
+  const response = await POST({ json: async () => ({ pitchData: { companyName: "Tilly" },
+    conversation: [{ role: "user", text: "My saved answer" }] }) });
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(body.code, "REPORT_PAGE_OUTDATED");
+  assert.match(body.error, /Refresh this page/);
+  assert.match(body.error, /conversation is still saved/);
+  assert.equal(started, false);
+});

@@ -119,7 +119,9 @@ export async function POST(req: NextRequest) {
     const body: Body = await req.json();
     const { pitchData, conversation, reportId, accessToken, retry } = body;
     if (!validReportAccess(reportId, accessToken)) {
-      return NextResponse.json({ ok: false, error: "Invalid report access." }, { status: 400 });
+      return NextResponse.json({ ok: false, code: "REPORT_PAGE_OUTDATED",
+        error: "Refresh this page to reconnect your saved pitch, then try again. Your conversation is still saved." },
+        { status: 400, headers: { "Cache-Control": "no-store" } });
     }
     const origin = req.headers?.get("origin");
     if (origin && req.url && origin !== new URL(req.url).origin) {
