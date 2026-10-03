@@ -11,6 +11,19 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef("");
   const interimRef = useRef("");
+  const pendingStopRef = useRef<{ promise: Promise<string>; finish: () => void } | null>(null);
+
+  const releaseRecognition = useCallback(function () {
+    const r = recognitionRef.current;
+    pendingStopRef.current?.finish();
+    recognitionRef.current = null;
+    if (r) {
+      r.onresult = null;
+      r.onerror = null;
+      r.onend = null;
+      try { r.abort(); } catch (e) {}
+    }
+  }, []);
 
   useEffect(function () {
     if (typeof window === "undefined") return;
@@ -20,12 +33,14 @@ export function useSpeechRecognition() {
       return;
     }
     setSupported(true);
-  }, []);
+    return releaseRecognition;
+  }, [releaseRecognition]);
 
   const start = useCallback(function () {
     if (typeof window === "undefined") return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
+    releaseRecognition();
     const r = new SR();
     r.continuous = true;
     r.interimResults = true;
@@ -37,76 +52,95 @@ export function useSpeechRecognition() {
     setError("");
 
     r.onresult = function (e: any) {
-      let finalText = "";
-      let interimText = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t;
-        else interimText += t;
+      if (recognitionRef.current !== r) return;
+      // results is the complete session snapshot, not a stream of new words.
+      // Rebuild by result index so replayed/revised mobile results replace text.
+      const finalParts: string[] = [];
+      const interimParts: string[] = [];
+      for (let i = 0; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript.trim();
+        if (e.results[i].isFinal) finalParts.push(t);
+        else interimParts.push(t);
       }
-      if (finalText) {
-        transcriptRef.current = (transcriptRef.current + " " + finalText).trim();
-        setTranscript(transcriptRef.current);
-      }
-      interimRef.current = interimText;
-      setInterim(interimText);
+      transcriptRef.current = finalParts.filter(Boolean).join(" ");
+      interimRef.current = interimParts.filter(Boolean).join(" ");
+      setTranscript(transcriptRef.current);
+      setInterim(interimRef.current);
     };
     r.onerror = function (e: any) {
+      if (recognitionRef.current !== r) return;
       setError("Voice error: " + e.error);
     };
     r.onend = function () {
+      if (recognitionRef.current !== r) return;
+      recognitionRef.current = null;
       setListening(false);
     };
 
     recognitionRef.current = r;
-    r.start();
-    setListening(true);
-  }, []);
+    try {
+      r.start();
+      setListening(true);
+    } catch (e) {
+      releaseRecognition();
+      setListening(false);
+      setError("Unable to start voice input. Please try again.");
+    }
+  }, [releaseRecognition]);
 
   const stop = useCallback(function () {
-    return new Promise<string>(function (resolve) {
-      if (!recognitionRef.current) {
-        const final = (transcriptRef.current + " " + interimRef.current).trim();
-        setListening(false);
-        resolve(final);
-        return;
-      }
+    if (pendingStopRef.current) return pendingStopRef.current.promise;
+    const r = recognitionRef.current;
+    if (!r) {
+      const final = (transcriptRef.current + " " + interimRef.current).trim();
+      setListening(false);
+      return Promise.resolve(final);
+    }
 
+    let finish!: () => void;
+    let timer: ReturnType<typeof setTimeout>;
+    const promise = new Promise<string>(function (resolve) {
+      let settled = false;
       const handleEnd = function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         const final = (transcriptRef.current + " " + interimRef.current).trim();
+        r.onresult = null;
+        r.onerror = null;
+        r.onend = null;
+        if (recognitionRef.current === r) recognitionRef.current = null;
+        pendingStopRef.current = null;
         setListening(false);
         resolve(final);
       };
-
-      try {
-        recognitionRef.current.onend = handleEnd;
-        recognitionRef.current.stop();
-      } catch (e) {
-        handleEnd();
-      }
-
-      setTimeout(function () {
-        if (listening) {
-          handleEnd();
-        }
-      }, 800);
+      finish = handleEnd;
     });
-  }, [listening]);
+    pendingStopRef.current = { promise, finish };
+    // Some browsers omit onend. Settle once and ignore any late old-session events.
+    timer = setTimeout(function () {
+      finish();
+      try { r.abort(); } catch (e) {}
+    }, 800);
+
+    try {
+      r.onend = finish;
+      r.stop();
+    } catch (e) {
+      finish();
+    }
+    return promise;
+  }, []);
 
   const hardReset = useCallback(function () {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {}
-      recognitionRef.current = null;
-    }
+    releaseRecognition();
     transcriptRef.current = "";
     interimRef.current = "";
     setTranscript("");
     setInterim("");
     setError("");
     setListening(false);
-  }, []);
+  }, [releaseRecognition]);
 
   return { supported, listening, transcript, interim, error, start, stop, hardReset };
 }
