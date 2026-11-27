@@ -92,6 +92,7 @@ export default function PitchConfirm(props: Props) {
     onConfirm(edited);
   }
 
+  const source = edited.sourceDocument;
   const canConfirm = edited.companyName.trim() && edited.oneLineDescription.trim();
 
   return (
@@ -105,6 +106,20 @@ export default function PitchConfirm(props: Props) {
         </p>
       </div>
 
+      {source && <div className="glass-card rounded-2xl p-5 mb-5">
+        <p className="font-semibold text-slate-900">{source.kind === "pdf"
+          ? `Found readable text on ${source.pageCount - source.unreadablePages.length} of ${source.pageCount} ${source.pageCount === 1 ? "page" : "pages"}.`
+          : "Your plan has been condensed into an investor brief."}</p>
+        {source.unreadablePages.length > 0 && <p className="mt-1 text-sm text-amber-800">No readable text on {source.kind === "pdf" ? "pages" : "sections"} {source.unreadablePages.join(", ")}. Add any important figures from those in the note below.</p>}
+        <details className="mt-2 text-sm text-slate-700">
+          <summary className="cursor-pointer font-medium text-purple-700">Review source excerpts or add a note</summary>
+          {source.evidence.length > 0 && <ul className="my-3 space-y-2">{source.evidence.map((e, i) =>
+            <li key={i}><strong>{source.kind === "pdf" ? "Page" : "Section"} {e.page}:</strong> {e.quote}</li>)}</ul>}
+          <label htmlFor="pitch-source-note" className="block mt-3 mb-1 font-medium">Anything important in a chart or missing from the brief?</label>
+          <textarea id="pitch-source-note" rows={2} maxLength={1200} value={source.founderNote || ""} onChange={e => update("sourceDocument", { ...source, founderNote: e.target.value })}
+            className="w-full rounded-xl border border-slate-300 bg-white p-3" placeholder="Add a figure or clarification for the investor (optional)." />
+        </details>
+      </div>}
       <Section title="The company">
         <Field label="Company / product name" value={edited.companyName} onChange={(v) => update("companyName", v)} />
         <Field label="One-line description" value={edited.oneLineDescription} onChange={(v) => update("oneLineDescription", v)} multiline />

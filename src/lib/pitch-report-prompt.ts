@@ -1,3 +1,4 @@
+import { pitchSourceContext } from "./pitch-document";
 import type { PitchData, PitchMessage } from "@/types";
 
 const PROMPT_PARTS: string[] = [];
@@ -33,6 +34,7 @@ PROMPT_PARTS.push("");
 PROMPT_PARTS.push("CALIBRATION FOR SEED STAGE");
 PROMPT_PARTS.push("This is a SEED stage pitch. The bar is: do you have something real, are you going after a real market, can you tell the story, are the unit economics plausible, is the team credible. You are NOT looking for Series A levels of proof. But you ARE looking for evidence over assertion.");
 PROMPT_PARTS.push("");
+PROMPT_PARTS.push("Judge the quality of the evidence, not the length or polish of the uploaded document. Treat the founder’s clarifications as their account, not independent verification.");
 PROMPT_PARTS.push("QUESTIONING SUSPICIOUS NUMBERS");
 PROMPT_PARTS.push("Founders often cite metrics that look impressive but don't hold up at their stage. When you see numbers, check whether they have the operating history and customer count to compute them meaningfully.");
 PROMPT_PARTS.push("");
@@ -54,7 +56,7 @@ PROMPT_PARTS.push("UNCERTAINTY");
 PROMPT_PARTS.push("If the conversation didn't surface enough on a topic, say so. 'Not enough info to assess X' is better than fabricating a judgment. If you don't have current sector data, say 'I don't have current data on X' rather than inventing.");
 PROMPT_PARTS.push("");
 PROMPT_PARTS.push("CLOSING PITCH ASSESSMENT");
-PROMPT_PARTS.push("The final answer is a requested 30-second closing pitch. Assess how clearly and credibly it connects: why this is the right moment in the market, why investment is needed now and what it enables, and what makes the product different from alternatives. Judge the case for investment, not just polished delivery. Check these claims against the earlier answers and one-pager. Do not let a confident close override weak evidence or contradictions.");
+PROMPT_PARTS.push("The final answer is a requested 30-second closing pitch. Assess how clearly and credibly it connects: why this is the right moment in the market, why investment is needed now and what it enables, and what makes the product different from alternatives. Judge the case for investment, not just polished delivery. Check these claims against the earlier answers and pitch document. Do not let a confident close override weak evidence or contradictions.");
 PROMPT_PARTS.push("Use the closing statement when deciding verdict and verdictCategory, alongside all six normal topics. Include at least one specific observation about the closing pitch in strong or weak, and explain what worked or what was missing. Where needed, give a concrete improvement in thirtyDayActions and strengthen the close in revisedPitch using only supplied evidence.");
 PROMPT_PARTS.push("Thirty seconds is a target, not a measured limit. You have text, not audio timing, so do not claim to know its duration or penalise exact timing. If the closing statement is absent in an older conversation, assess the available answers without inventing a close or penalising the founder for a question they were never asked.");
 PROMPT_PARTS.push("");
@@ -134,7 +136,8 @@ export function pitchReportInput(pitchData: PitchData, conversation: PitchMessag
       "\nTraction: " + pitchData.traction +
       "\nAsk: " + pitchData.ask;
 
-    return "PITCH ONE-PAGER\n" + pitchSummary +
+    return "FOUNDER-REVIEWED PITCH BRIEF\n" + pitchSummary +
+      "\n\nDOCUMENT EVIDENCE (founder-supplied; use supplied page references when they clarify a claim; never invent one or infer missing pages)\n" + pitchSourceContext(pitchData) +
       "\n\nFULL CONVERSATION TRANSCRIPT\n" + conversationLog +
       "\n\nCLOSING STATEMENT\n" + (closingAnswer?.text || "Not present in this conversation. Assess the available answers.") +
       "\n\nGenerate the critique JSON now. No preamble. No code fences. Just the JSON.";

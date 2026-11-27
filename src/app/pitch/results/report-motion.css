@@ -1,0 +1,14 @@
+/* Draw the report a line at a time. Static ink is the default for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .pitch-report-ink {
+    stroke-dasharray: 1;
+    animation: pitch-report-write 4s ease-in-out infinite;
+  }
+  .pitch-report-ink-2 { animation-delay: .4s; }
+  .pitch-report-ink-3 { animation-delay: .8s; }
+}
+@keyframes pitch-report-write {
+  0%, 12% { stroke-dashoffset: 1; opacity: .35; }
+  48%, 78% { stroke-dashoffset: 0; opacity: 1; }
+  96%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}

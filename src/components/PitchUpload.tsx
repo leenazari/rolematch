@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { DIRECT_PDF_BYTES, MAX_PITCH_BYTES, MAX_PITCH_CHARS, MIN_PITCH_TEXT, PITCH_PAGE_LIMIT, PITCH_TEXT_LIMIT, PITCH_FILE_LIMIT } from "@/lib/pitch-document";
 import type { PitchData } from "@/types";
 
 type Props = {
@@ -14,22 +15,40 @@ export default function PitchUpload(props: Props) {
   const [mode, setMode] = useState<Mode>("upload");
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("Reading your pitch document");
   const [error, setError] = useState("");
   const [pasteText, setPasteText] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function handleFile(file: File) {
     setError("");
-    setUploading(true);
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      setError("Choose a PDF, or paste the text from your document instead."); return;
+    }
+    if (file.size > MAX_PITCH_BYTES) { setError(PITCH_FILE_LIMIT); return; }
+    setUploading(true); setUploadMessage("Reading your pitch document");
     try {
-      if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-        setError("Please upload a PDF file. If you have a Word doc, copy the text and paste instead.");
-        setUploading(false);
-        return;
+      let res: Response;
+      if (file.size <= DIRECT_PDF_BYTES) {
+        const formData = new FormData(); formData.append("file", file);
+        res = await fetch("/api/extract-pitch", { method: "POST", body: formData });
+      } else {
+        let pages: string[];
+        try {
+          const { readLargePitchFile } = await import("@/lib/pitch-file-client");
+          pages = await readLargePitchFile(file, (n, total) => {
+            if (n === 1 || n === total || n % 10 === 0) setUploadMessage("Reading page " + n + " of " + total);
+          });
+        } catch (e) {
+          const detail = e instanceof Error ? e : null;
+          setError(detail && [PITCH_PAGE_LIMIT, PITCH_TEXT_LIMIT].includes(detail.message) ? detail.message
+            : detail?.name === "PasswordException" ? "This PDF is locked. Export an unlocked copy, or paste the text."
+            : "We couldn’t open this PDF. Export a searchable or smaller PDF, or paste the text.");
+          setUploading(false); return;
+        }
+        setUploadMessage("Preparing your pitch brief");
+        res = await fetch("/api/extract-pitch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pages }) });
       }
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/extract-pitch", { method: "POST", body: formData });
       const json = await res.json();
       if (!json.ok) {
         setError(json.error || "Failed to extract from this document.");
@@ -44,11 +63,12 @@ export default function PitchUpload(props: Props) {
   }
 
   async function handlePasteSubmit() {
-    if (!pasteText.trim() || pasteText.trim().length < 100) {
-      setError("Please paste more of your one-pager. Even 200 words helps.");
+    if (pasteText.trim().length < MIN_PITCH_TEXT) {
+      setError("Paste at least 200 characters about your business.");
       return;
     }
-    setError("");
+    if (pasteText.length > MAX_PITCH_CHARS) { setError(PITCH_TEXT_LIMIT); return; }
+    setError(""); setUploadMessage("Preparing your pitch brief");
     setUploading(true);
     try {
       const res = await fetch("/api/extract-pitch", {
@@ -78,10 +98,10 @@ export default function PitchUpload(props: Props) {
 
   if (uploading) {
     return (
-      <div className="glass-card rounded-3xl py-16 text-center max-w-2xl mx-auto">
-        <div className="inline-block w-14 h-14 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mb-6"></div>
-        <p className="text-lg text-slate-800 font-semibold mb-2">Reading your pitch...</p>
-        <p className="text-sm text-slate-500">This usually takes about ten seconds.</p>
+      <div role="status" className="glass-card rounded-3xl px-5 py-16 text-center max-w-2xl mx-auto">
+        <div className="inline-block w-14 h-14 border-4 border-purple-200 border-t-purple-600 rounded-full motion-safe:animate-spin mb-6"></div>
+        <p className="text-lg text-slate-800 font-semibold mb-2">{uploadMessage}</p>
+        <p className="text-sm text-slate-500">We’ll show you the brief to check before the investor starts. Longer plans may take a little more time.</p>
       </div>
     );
   }
@@ -108,46 +128,32 @@ export default function PitchUpload(props: Props) {
       </div>
 
       {mode === "upload" ? (
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={dragging
-            ? "border-2 border-dashed border-purple-500 glass-card-strong rounded-3xl p-16 text-center cursor-pointer smooth-transition"
-            : "border-2 border-dashed border-slate-300 glass-card rounded-3xl p-16 text-center cursor-pointer hover:border-purple-400 smooth-transition"}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-            }}
-          />
-          <div className="mb-4">
+        <>
+          <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={e => {
+            const file = e.target.files?.[0]; e.target.value = ""; if (file) handleFile(file);
+          }} />
+          <button type="button" onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}
+            className={"w-full border-2 border-dashed rounded-3xl px-5 py-12 sm:p-16 text-center smooth-transition " +
+              (dragging ? "border-purple-500 glass-card-strong" : "border-slate-300 glass-card hover:border-purple-400")}>
+          <span className="block mb-4">
             <svg className="w-16 h-16 mx-auto text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-          </div>
-          <p className="text-xl font-bold text-slate-900 mb-2">
-            Drop your one-pager here
-          </p>
-          <p className="text-sm text-slate-500 mb-3">
-            or click to browse
-          </p>
-          <p className="text-xs text-slate-400 max-w-xs mx-auto">
-            PDF up to 3 pages. Include problem, solution, traction, team, market, ask.
-          </p>
-        </div>
+          </span>
+          <span className="block text-xl font-bold text-slate-900">Drop your pitch document here</span>
+          <span className="block text-sm text-purple-700 mt-1">or choose a PDF</span>
+          <span className="block text-sm text-slate-600 mt-4">One-pager, pitch deck or full business plan.</span>
+          <span className="block text-xs text-slate-600 mt-1">Searchable PDF · up to 100 pages · 20 MB</span>
+          </button>
+          <p className="mt-3 text-center text-xs leading-relaxed text-slate-600">Up to 240,000 characters of text. Figures shown only in images or charts can be added when you check the brief.</p>
+        </>
       ) : (
         <div className="glass-card rounded-3xl p-6">
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder="Paste your pitch text here. Include problem, solution, traction, team, market, and what you're raising. The more detail, the better the conversation."
+            placeholder="Paste your pitch, deck notes or business plan. Include the problem, customers, traction, financials and what you’re raising."
             className="w-full h-64 p-4 border border-slate-300 rounded-xl focus:border-purple-400 focus:outline-none resize-none text-sm bg-white/80 smooth-transition"
           />
           <button
@@ -161,7 +167,7 @@ export default function PitchUpload(props: Props) {
       )}
 
       {error && (
-        <div className="mt-4 p-4 bg-red-50/80 backdrop-blur border border-red-200 rounded-xl text-sm text-red-700">
+        <div role="alert" className="mt-4 p-4 bg-red-50/80 backdrop-blur border border-red-200 rounded-xl text-sm text-red-700">
           {error}
         </div>
       )}

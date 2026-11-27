@@ -6,6 +6,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { loadPitchReport, reportAccess, type ReportAccess } from "@/lib/pitch-report-client";
 import { ReportInsights } from "./report-insights";
+import { ReportLoadingScreen, ReportProgressNotice } from "./report-preparation";
 import { ReportEmail } from "./report-email";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
@@ -58,94 +59,6 @@ function VerdictBadge(props: { category: string }) {
   );
 }
 
-const LOADING_MESSAGES = [
-  "Reading back through everything you said...",
-  "Looking for what's really strong in your business...",
-  "Pulling on the threads that might be weak...",
-  "Thinking about what real VCs would ask next...",
-  "Putting the verdict together...",
-];
-
-function LoadingState(props: { companyName: string }) {
-  const { companyName } = props;
-  const [messageIndex, setMessageIndex] = useState(0);
-  const [fading, setFading] = useState(false);
-
-  useEffect(function () {
-    const interval = setInterval(function () {
-      setFading(true);
-      setTimeout(function () {
-        setMessageIndex(function (prev) {
-          if (prev >= LOADING_MESSAGES.length - 1) {
-            return prev;
-          }
-          return prev + 1;
-        });
-        setFading(false);
-      }, 400);
-    }, 6000);
-
-    return function () { clearInterval(interval); };
-  }, []);
-
-  return (
-    <main className="min-h-screen mesh-bg-pitch flex items-center justify-center px-6">
-      <div className="glass-card-strong rounded-3xl p-12 max-w-xl w-full text-center">
-        <div className="text-xs font-semibold text-purple-600 mb-3 tracking-widest uppercase">
-          Pitch Perfect
-        </div>
-        <h2 className="text-2xl md:text-3xl display-headline-tight text-slate-900 mb-2">
-          Preparing your feedback
-        </h2>
-        {companyName ? (
-          <p className="text-sm text-slate-500 mb-10">For {companyName}</p>
-        ) : null}
-
-        {/* Animated waveform */}
-        <div className="flex items-end justify-center gap-1.5 h-16 mb-8">
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(function (i) {
-            return (
-              <div
-                key={i}
-                className="w-1.5 rounded-full bg-purple-500"
-                style={{
-                  animation: "waveform-pulse 1.4s ease-in-out " + (i * 0.08) + "s infinite",
-                  opacity: 0.7,
-                }}
-              />
-            );
-          })}
-        </div>
-
-        {/* Rotating message with fade */}
-        <p
-          className="text-lg text-slate-700 leading-relaxed smooth-transition min-h-[3rem]"
-          style={{ opacity: fading ? 0 : 1 }}
-        >
-          {LOADING_MESSAGES[messageIndex]}
-        </p>
-
-        <p className="text-xs text-slate-400 mt-6">
-          Your feedback is preparing. You can refresh this page to resume it.
-        </p>
-      </div>
-
-      <style jsx>{`
-        @keyframes waveform-pulse {
-          0%, 100% {
-            height: 8px;
-            opacity: 0.4;
-          }
-          50% {
-            height: 56px;
-            opacity: 1;
-          }
-        }
-      `}</style>
-    </main>
-  );
-}
-
 export default function PitchResultsPage() {
   const router = useRouter();
   const [pitchData, setPitchData] = useState<PitchData | null>(null);
@@ -160,6 +73,14 @@ export default function PitchResultsPage() {
   const [enhancingReport, setEnhancingReport] = useState(false);
   const [insightsError, setInsightsError] = useState("");
   const [generatedAt, setGeneratedAt] = useState<string>("");
+
+  const [takingLonger, setTakingLonger] = useState(false);
+  const waitingForReport = !critique && !error;
+  useEffect(() => {
+    if (!waitingForReport) { setTakingLonger(false); return; }
+    const timer = setTimeout(() => setTakingLonger(true), 120_000);
+    return () => clearTimeout(timer);
+  }, [waitingForReport]);
 
   useEffect(() => {
     let active = true;
@@ -292,7 +213,7 @@ export default function PitchResultsPage() {
   }
 
   if (!critique && !partialCritique) {
-    return <LoadingState companyName={pitchData?.companyName || ""} />;
+    return <ReportLoadingScreen company={pitchData?.companyName} takingLonger={takingLonger} />;
   }
 
   const report: Partial<PitchCritique> = { ...critique, ...partialCritique };
@@ -322,10 +243,7 @@ export default function PitchResultsPage() {
           </button>
         </div>
 
-        {savingPdf ? <div role="status" className="mb-6 rounded-xl border border-purple-200 bg-purple-50 p-4 text-sm text-purple-900">
-          <p className="font-semibold mb-1">Report in progress</p>
-          <p>Read each section as it arrives. Your verdict and strengths come first, followed by fixes and next steps. Market research is being prepared separately. The complete PDF will be available when everything is ready.</p>
-        </div> : null}
+        {savingPdf && <ReportProgressNotice takingLonger={takingLonger} complete={!!critique} enhancing={enhancingReport} />}
         {error ? <div role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
           <p>{error}</p>
           <p className="mt-1">The feedback shown so far and your conversation are saved.</p>
