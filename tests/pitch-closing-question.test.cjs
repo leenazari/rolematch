@@ -96,3 +96,13 @@ test("after two follow-ups a reluctant interviewer still asks the next core topi
   assert.equal(reply.followUpsThisQuestion, 0);
   assert.match(reply.text, /customers could you realistically reach/);
 });
+
+test("spoken text excludes control fields even when the model echoes them inside the question", async () => {
+  const question = "Who at a pilot depot can approve £300 a month?";
+  const leaked = question + "','moveOn':false,'finished':false,'thinAnswer':false}";
+  for (const text of [leaked, "{'text':'" + leaked, question]) {
+    const reply = await setup({ text, moveOn: false, finished: false, thinAnswer: false }).ask(1, 0, []);
+    assert.equal(reply.text, question);
+    assert.equal(reply.followUpsThisQuestion, 0);
+  }
+});

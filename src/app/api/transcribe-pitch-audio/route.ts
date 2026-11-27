@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       model: process.env.OPENAI_PITCH_TRANSCRIPTION_MODEL || "gpt-4o-transcribe",
       language: "en",
       prompt: form.get("kind") === "career" ? "A UK career interview about work experience, qualifications and preferred roles." :
-        "An investor pitch in British English. Business vocabulary: revenue, EPOS, SaaS, payments." +
+        "A founder answering investor questions in British English. Transcribe the company names and figures as spoken." +
         (companyName ? " Company name: " + companyName + "." : ""),
     });
     const text = result.text.trim();

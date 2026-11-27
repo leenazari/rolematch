@@ -35,6 +35,7 @@ test("transcribes the actual audio with English and company vocabulary", async t
   assert.equal(s.calls[0].model, "gpt-4o-transcribe");
   assert.equal(s.calls[0].language, "en");
   assert.match(s.calls[0].prompt, /Tilly/);
+  assert.doesNotMatch(s.calls[0].prompt, /EPOS|SaaS|payments/);
   assert.equal(s.calls[0].file.name, "answer.webm");
   assert.equal(s.calls[0].file.bytes.toString(), "audio bytes");
 });

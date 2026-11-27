@@ -84,6 +84,9 @@ export async function POST(req: NextRequest) {
     const parsed = await generateJson("pitch_question", CONVERSATION_FRAMEWORK, userPrompt);
 
     let text: string = (parsed.text || "").trim();
+    // A valid structured response can still echo its control fields inside the spoken string.
+    text = text.replace(/^\{\s*["']text["']\s*:\s*["']/i, "")
+      .replace(/(\?)\s*["'’]?\s*,\s*["'](?:moveOn|finished|thinAnswer)["']\s*:\s*(?:true|false)\b[\s\S]*$/i, "$1");
     text = text.replace(/let'?s change tack[,.\s]*/gi, "").replace(/change tack[,.\s]*/gi, "").trim();
     text = text.replace(/[—–―−‒]/g, ", ");
     text = text.replace(/\s+-\s+/g, ", ");
