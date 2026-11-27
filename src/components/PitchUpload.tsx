@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { DIRECT_PDF_BYTES, MAX_PITCH_BYTES, MAX_PITCH_CHARS, MIN_PITCH_TEXT, PITCH_PAGE_LIMIT, PITCH_TEXT_LIMIT, PITCH_FILE_LIMIT } from "@/lib/pitch-document";
+import { DIRECT_PDF_BYTES, MAX_PITCH_BYTES, MAX_PITCH_MB, MAX_PITCH_PAGES, MAX_PITCH_CHARS, MIN_PITCH_TEXT, PITCH_PAGE_LIMIT, PITCH_TEXT_LIMIT, PITCH_FILE_LIMIT } from "@/lib/pitch-document";
 import type { PitchData } from "@/types";
 
 type Props = {
@@ -144,7 +144,7 @@ export default function PitchUpload(props: Props) {
           <span className="block text-xl font-bold text-slate-900">Drop your pitch document here</span>
           <span className="block text-sm text-purple-700 mt-1">or choose a PDF</span>
           <span className="block text-sm text-slate-600 mt-4">One-pager, pitch deck or full business plan.</span>
-          <span className="block text-xs text-slate-600 mt-1">Searchable PDF · up to 100 pages · 20 MB</span>
+          <span className="block text-xs text-slate-600 mt-1">{`Searchable PDF · up to ${MAX_PITCH_PAGES} pages · ${MAX_PITCH_MB} MB`}</span>
           </button>
           <p className="mt-3 text-center text-xs leading-relaxed text-slate-600">Up to 240,000 characters of text. Figures shown only in images or charts can be added when you check the brief.</p>
         </>

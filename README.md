@@ -223,4 +223,4 @@ or start a new pitch to test the enhanced report.
 
 ### Pitch documents
 
-Founders can upload a searchable PDF (100 pages, 20 MB and 240,000 extracted characters maximum) or paste a plan. The reader processes all pages, including appendices, in one OpenAI extraction. The interview and report reuse the reviewed brief and exact page excerpts, not the entire plan. Pages without readable text are listed before the interview; the founder can add missing chart figures. The original PDF is not archived. For PDFs over 4 MB, the browser reads the file locally using the bundled PDF.js reader and sends only the text to the API.
+Founders can upload a searchable PDF (100 pages, 50 MB and 240,000 extracted characters maximum) or paste a plan. The reader processes all pages, including appendices, in one OpenAI extraction. The interview and report reuse the reviewed brief and exact page excerpts, not the entire plan. Pages without readable text are listed before the interview; the founder can add missing chart figures. The original PDF is not archived. For PDFs over 4 MB, the browser reads the file locally using the bundled PDF.js reader and sends only the text to the API.
