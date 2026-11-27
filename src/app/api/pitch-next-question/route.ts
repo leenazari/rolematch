@@ -1,5 +1,7 @@
+import { checkRequest, checkUsage } from "@/lib/api-guard";
+import { safeFailure } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, HAIKU } from "@/lib/anthropic";
+import { generateJson } from "@/lib/openai-json";
 import type { PitchData, PitchMessage } from "@/types";
 
 export const runtime = "nodejs";
@@ -136,6 +138,7 @@ function scrubTimingHallucinations(text: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    checkRequest(req, 900_000);
     const body: Body = await req.json();
     const { pitchData, history, currentQuestion, followUpsThisQuestion } = body;
 
@@ -200,22 +203,8 @@ export async function POST(req: NextRequest) {
       "\n\nINSTRUCTION\n" + stateInstruction +
       "\n\nRespond with JSON only.";
 
-    const msg = await anthropic.messages.create({
-      model: HAIKU,
-      max_tokens: 500,
-      system: CONVERSATION_FRAMEWORK,
-      messages: [{ role: "user", content: userPrompt }],
-    });
-
-    const textBlock = msg.content.find(function (b) { return b.type === "text"; });
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from AI");
-    }
-
-    let cleaned = textBlock.text.trim();
-    cleaned = cleaned.replace(/```json|```/g, "").trim();
-
-    const parsed = JSON.parse(cleaned);
+    await checkUsage(req, "interview");
+    const parsed = await generateJson("pitch_question", CONVERSATION_FRAMEWORK, userPrompt);
 
     let text: string = (parsed.text || "").trim();
     text = text.replace(/let'?s change tack[,.\s]*/gi, "").replace(/change tack[,.\s]*/gi, "").trim();
@@ -269,11 +258,7 @@ export async function POST(req: NextRequest) {
       finished,
       thinAnswer,
     });
-  } catch (e: any) {
-    console.error("pitch-next-question error:", e);
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Failed to generate next question" },
-      { status: 500 }
-    );
+  } catch (error) {
+    return safeFailure(error, "Could not prepare the next question. Your answer is saved. Please retry.");
   }
 }

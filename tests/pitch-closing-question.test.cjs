@@ -5,10 +5,10 @@ const { loadTs } = require("./load-ts.cjs");
 function setup(reply = { text: "Next question?", moveOn: true, finished: false }) {
   const requests = [];
   const { POST } = loadTs("src/app/api/pitch-next-question/route.ts", {
-    "@/lib/anthropic": { HAIKU: "test-model", anthropic: { messages: { create: async request => {
+    "@/lib/openai-json": { generateJson: async (...request) => {
       requests.push(request);
-      return { content: [{ type: "text", text: JSON.stringify(reply) }] };
-    } } } },
+      return reply;
+    } },
   });
   const ask = async (currentQuestion, followUpsThisQuestion = 0, history = [
     { role: "ai", text: "The funding question", questionNumber: currentQuestion },

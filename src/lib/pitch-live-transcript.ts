@@ -25,6 +25,7 @@ export function createLiveTranscript() {
 
 export function connectPitchLiveTranscript(stream: MediaStream, options: {
   companyName: string;
+  kind?: "pitch" | "career";
   onText: (text: string) => void;
   onStatus: (status: LiveTextStatus) => void;
 }) {
@@ -86,7 +87,7 @@ export function connectPitchLiveTranscript(stream: MediaStream, options: {
       const response = await fetch("/api/pitch-live-transcription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sdp: peer.localDescription?.sdp || offer.sdp, companyName: options.companyName }),
+        body: JSON.stringify({ sdp: peer.localDescription?.sdp || offer.sdp, companyName: options.companyName, kind: options.kind }),
         signal: controller.signal,
       });
       const result = await response.json();

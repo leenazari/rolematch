@@ -18,6 +18,7 @@ exports.loadTs = function (relativePath, mocks = {}, transform = source => sourc
   compiledModule.paths = Module._nodeModulePaths(path.dirname(filename));
   const originalRequire = compiledModule.require.bind(compiledModule);
   compiledModule.require = name => {
+    if (name === "server-only") return {}; // The test harness executes server modules in Node.
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (name.startsWith("@/") || name.startsWith("./") || name.startsWith("../")) {
       const base = name.startsWith("@/") ? path.resolve(__dirname, "../src", name.slice(2)) : path.resolve(path.dirname(filename), name);

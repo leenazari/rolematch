@@ -6,7 +6,7 @@ import { track } from "@vercel/analytics";
 import { pitchStore } from "@/lib/pitch-browser-store";
 import { beginPitchSession, checkpointPitch, savedPitchSession, recoverPitchSession, persistPitchSession } from "@/lib/pitch-session-client";
 import { PITCH_SIGN_OFF, validPitchEmail, type PitchSessionState } from "@/lib/pitch-session-state";
-import { usePitchAudioRecorder } from "@/hooks/usePitchAudioRecorder";
+import { useInterviewRecorder } from "@/hooks/useInterviewRecorder";
 import { usePitchSpeechSynthesis } from "@/hooks/usePitchSpeechSynthesis";
 import VoiceOrb from "@/components/VoiceOrb";
 import type { PitchData, PitchMessage } from "@/types";
@@ -45,7 +45,7 @@ export default function PitchConversationPage() {
   const {
     supported: voiceSupported, status: recordingStatus, error: voiceError, canRetry,
     liveText, liveStatus, start, stop, retry, reset: hardReset,
-  } = usePitchAudioRecorder({
+  } = useInterviewRecorder({
     onComplete(text) {
       const answer = [recordingBaseRef.current, text].filter(Boolean).join(" ").trim();
       setDraftAnswer(answer);
@@ -297,7 +297,7 @@ export default function PitchConversationPage() {
               I'll ask six questions about the business, then invite you to give a 30-second closing pitch. The conversation is friendly. The honest written feedback comes after.
             </p>
             <p className="text-slate-500 text-sm mb-8">
-              Speak naturally. You can also edit your answer before sending.
+              Your investor has an AI-generated voice. Speak naturally or type, then review your answer before sending.
             </p>
             <button
               onClick={startConversation}

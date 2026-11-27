@@ -16,10 +16,10 @@ type Session = {
 };
 const MAX_AUDIO_BYTES = 3_500_000;
 
-export function usePitchAudioRecorder(callbacks: {
+export function useInterviewRecorder(callbacks: {
   onComplete: (text: string) => void;
   onError: () => void;
-}) {
+}, kind: "pitch" | "career" = "pitch") {
   const [supported, setSupported] = useState(true);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
@@ -83,6 +83,7 @@ export function usePitchAudioRecorder(callbacks: {
       const extension = audio.type.includes("mp4") ? "mp4" : "webm";
       form.append("audio", audio, "answer." + extension);
       form.append("companyName", session.companyName);
+      form.append("kind", kind);
       const response = await fetch("/api/transcribe-pitch-audio", {
         method: "POST", body: form, signal: controller.signal,
       });
@@ -106,7 +107,7 @@ export function usePitchAudioRecorder(callbacks: {
       clearTimeout(timeout);
       session.request = undefined;
     }
-  }, [fail]);
+  }, [fail, kind]);
 
   const start = useCallback(async (companyName = "") => {
     release();
@@ -132,7 +133,7 @@ export function usePitchAudioRecorder(callbacks: {
       if (typeof RTCPeerConnection === "function") {
         try {
           session.live = connectPitchLiveTranscript(stream, {
-            companyName,
+            companyName, kind,
             onText: text => { if (sessionRef.current === session) setLiveText(text); },
             onStatus: value => { if (sessionRef.current === session) setLiveStatus(value); },
           });
@@ -178,7 +179,7 @@ export function usePitchAudioRecorder(callbacks: {
         : "Unable to open the microphone. Try again or type your answer.");
       return false;
     }
-  }, [release, fail, transcribe]);
+  }, [release, fail, transcribe, kind]);
 
   const stop = useCallback(() => {
     const session = sessionRef.current;
