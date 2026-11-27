@@ -165,13 +165,9 @@ export default function PitchPage() {
                 setStage("confirm");
               }}
             />
-            <div className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-slate-600">
-              <p>Pitch Perfect doesn’t save results for you to reopen. Download your PDF before leaving.</p>
-              <details className="mt-1">
-                <summary className="mx-auto w-fit cursor-pointer text-purple-700">Private archive details</summary>
-                <p className="mt-1">Pitch Perfect keeps a private copy of the conversation and report for the platform owner.</p>
-              </details>
-            </div>
+            <p className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-slate-600">
+              Pitch Perfect doesn’t save results for you to reopen. Download your PDF before leaving.
+            </p>
           </>
         )}
 
