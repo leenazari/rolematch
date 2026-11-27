@@ -16,7 +16,7 @@ Return this exact shape:
   "problem": "string (the core problem they solve, in plain language, 1-2 sentences)",
   "targetCustomer": "string (specifically who buys this, 1 sentence)",
   "sector": "string (the industry, e.g. Fintech, Healthtech, B2B SaaS, Climate, Retail Tech, Marketplace, Consumer)",
-  "stage": "string (one of: 'idea', 'pre-revenue', 'early revenue', 'revenue', 'scaling')",
+  "stage": "string (one of: 'idea', 'pre-revenue', 'early revenue', 'revenue', 'scaling', 'not specified')",
   "teamSize": "string (number of full-time team members, or description like 'two co-founders' if not numeric)",
   "founderBackground": "string (brief: where they came from, 1-2 sentences)",
   "traction": "string (any concrete traction mentioned: customers, revenue, users, partnerships, pilots. If none mentioned, write 'No traction details mentioned')",
@@ -27,7 +27,7 @@ Rules:
 - Be specific, not generic. If they say "we use AI to optimise customer journeys" don't write that back, write what we actually understand they do.
 - For oneLineDescription, write what the company does today, not what they aspire to.
 - For sector, pick the most accurate category. Don't invent.
-- For stage, infer from the document: no product = idea, has product but no paying customers = pre-revenue, has paying customers but small = early revenue, has solid revenue = revenue, growing fast = scaling.
+- For stage, use evidence in the document. Use pre-revenue only when it explicitly says there are no paying customers or revenue. A list of pilots and a price is insufficient evidence either way. Use 'not specified' when the commercial stage is unclear.
 - For traction, only include what's explicitly stated. Don't invent numbers or customers.
 - If a field is unclear, make your best inference rather than leaving empty. Use empty string only if truly nothing relevant.
 - Use British English (organising not organizing).

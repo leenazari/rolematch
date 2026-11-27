@@ -28,7 +28,7 @@ const role = {
 const tasks = {
   pitch_extract: { tokens: 2048, schema: object({
     companyName: str, oneLineDescription: str, problem: str, targetCustomer: str, sector: str,
-    stage: choice("idea", "pre-revenue", "early revenue", "revenue", "scaling"),
+    stage: choice("idea", "pre-revenue", "early revenue", "revenue", "scaling", "not specified"),
     teamSize: str, founderBackground: str, traction: str, ask: str,
   }) },
   cv_extract: { tokens: 2048, schema: object({

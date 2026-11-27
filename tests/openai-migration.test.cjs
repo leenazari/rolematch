@@ -50,6 +50,7 @@ test("the five migrated routes send the correct context to OpenAI and retain the
   assert.deepEqual((await call("generate-results", { cvData: extracted, conversation: history })).data, results.career_results);
   assert.deepEqual(requests.map(r => r.text.format.name), Object.keys(results));
   assert.equal(requests[0].input, text);
+  assert.ok(requests[0].text.format.schema.properties.stage.enum.includes("not specified"));
   for (const r of requests.slice(2)) assert.match(JSON.stringify(r.input), /Our customers asked for a workshop/);
   assert.deepEqual(requests[2].input.map(m => m.role), ["developer", "user"]);
   for (const r of requests) {
