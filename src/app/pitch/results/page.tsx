@@ -286,7 +286,7 @@ export default function PitchResultsPage() {
         <section id="download-report" aria-labelledby="download-title" className="mb-8 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-center">
           <h2 id="download-title" className="text-lg font-semibold text-slate-900">Download your report before you leave</h2>
           <p className="mt-1 text-sm text-slate-700">{critique
-            ? "Once you leave or refresh this page, you won’t be able to reopen your results. Download the PDF to keep a copy."
+            ? "Pitch Perfect doesn’t save results for you to reopen. Download your PDF before leaving or refreshing this page."
             : "Your full PDF will appear here when it’s ready. Download it before leaving the completed report."}</p>
           <button onClick={handleDownloadPdf} disabled={downloadingPdf || savingPdf || !critique}
             className="mt-4 rounded-xl bg-purple-700 px-6 py-3 font-semibold text-white hover:bg-purple-800 disabled:opacity-50">

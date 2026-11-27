@@ -165,9 +165,13 @@ export default function PitchPage() {
                 setStage("confirm");
               }}
             />
-            <p className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-slate-600">
-              Download your PDF before leaving the results page. Pitch Perfect keeps a private archive.
-            </p>
+            <div className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-slate-600">
+              <p>Pitch Perfect doesn’t save results for you to reopen. Download your PDF before leaving.</p>
+              <details className="mt-1">
+                <summary className="mx-auto w-fit cursor-pointer text-purple-700">Private archive details</summary>
+                <p className="mt-1">Pitch Perfect keeps a private copy of the conversation and report for the platform owner.</p>
+              </details>
+            </div>
           </>
         )}
 
@@ -184,15 +188,6 @@ export default function PitchPage() {
             }}
           />
         )}
-
-        <div className="text-center mt-8">
-          <button
-            onClick={() => router.push("/")}
-            className="text-sm text-slate-400 hover:text-slate-600 underline smooth-transition"
-          >
-            Back to home
-          </button>
-        </div>
       </div>
     </main>
   );
