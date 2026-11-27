@@ -1,12 +1,13 @@
 import type { PitchData, PitchSource } from "@/types";
 
 export const MAX_PITCH_PAGES = 100;
-export const MAX_PITCH_BYTES = 20_000_000;
+export const MAX_PITCH_MB = 50;
+export const MAX_PITCH_BYTES = MAX_PITCH_MB * 1_000_000;
 export const MAX_PITCH_CHARS = 240_000;
 export const DIRECT_PDF_BYTES = 4_000_000;
 export const PITCH_TEXT_LIMIT = "This plan has more than 240,000 characters. Export a shorter version or remove supporting appendices and try again.";
 export const PITCH_PAGE_LIMIT = "This PDF has more than 100 pages. Export your plan and its key appendices as a shorter PDF.";
-export const PITCH_FILE_LIMIT = "This PDF is over 20 MB. Compress it or export it at a smaller size and try again.";
+export const PITCH_FILE_LIMIT = `This PDF is over ${MAX_PITCH_MB} MB. Compress it or export it at a smaller size and try again.`;
 export const MIN_PITCH_TEXT = 200;
 export const normaliseSource = (text: string) => text.normalize("NFC").replace(/\u00ad/g, "").replace(/\s+/g, " ").trim();
 export const hasPageText = (text: string) => !!text && !/^(?:(?:page|p\.)\s*)?\d{1,4}(?:\s*(?:of|\/)\s*\d{1,4})?$/i.test(text);
