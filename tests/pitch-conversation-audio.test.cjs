@@ -30,6 +30,7 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
   let transcriptions = 0;
   global.fetch = async (url, request) => {
     requests.push({ url, ...request });
+    if (url === "/api/pitch-session") return { ok: true, json: async () => ({ ok: true, session: JSON.parse(request.body).state ? { state: JSON.parse(request.body).state } : null }) };
     const result = url === "/api/transcribe-pitch-audio"
       ? { ok: true, text: ++transcriptions === 1 ? "We ran a trial in one of their pubs." : "They want five sites." }
       : { ok: true, text: "What customer evidence do you have?", questionNumber: 1, followUpsThisQuestion: 0 };
@@ -97,7 +98,9 @@ test("the screen waits for a reviewed closing answer and includes it in the stor
       content: [{ type: "text", text: JSON.stringify({ text: "The next topic?", moveOn: true, finished: false }) }],
     }) } } },
   });
-  global.fetch = (url, request) => POST({ json: async () => JSON.parse(request.body) });
+  global.fetch = (url, request) => url === "/api/pitch-session"
+    ? Promise.resolve({ ok: true, json: async () => ({ ok: true, session: JSON.parse(request.body).state ? { state: JSON.parse(request.body).state } : null }) })
+    : POST({ json: async () => JSON.parse(request.body) });
   const destinations = [], spoken = [];
   const router = { push: url => destinations.push(url) };
   const { default: Page } = loadTs("src/app/pitch/conversation/page.tsx", {
@@ -126,7 +129,7 @@ test("the screen waits for a reviewed closing answer and includes it in the stor
   assert.ok(root.root.findAllByType("p").some(node => node.children.join("") === "Closing pitch · about 30 seconds"));
   assert.match(spoken.at(-1), /30-second pitch/);
   assert.deepEqual(destinations, []);
-  assert.equal(storage.has("pitchperfect_conversation"), false);
+  assert.equal(JSON.parse(storage.get("pitchperfect_conversation")).filter(m => m.role === "user").length, 6);
   await act(async () => button("Type my answer").props.onClick());
   assert.equal(button("Send my answer").props.disabled, true);
   const closing = "Rising costs make this urgent. Funding builds the tools our paying customers need. Our integrated reporting makes us different.";
