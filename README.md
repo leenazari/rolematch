@@ -75,7 +75,7 @@ generation allowance. Per-network limits reduce abuse but are not a billing cap.
 ## Saved reports
 
 Conversations are archived while they happen, not only on the results page.
-`pitch_sessions` holds the one-pager, conversation, reviewed and in-progress draft,
+`pitch_sessions` holds the reviewed pitch brief, source excerpts if available, conversation and in-progress draft,
 question number, pending question state, timestamps and revision. Every accepted
 answer is saved to Supabase before requesting the next question. Debounced draft
 saves protect the closing statement before Send. Late requests cannot overwrite
@@ -220,3 +220,7 @@ stop, edit it, add more, and send it. Each phrase should appear once in the answ
 and conversation history. Generate a new report and download its PDF. Previously
 cached reports are not regenerated automatically; use the insights upgrade button
 or start a new pitch to test the enhanced report.
+
+### Pitch documents
+
+Founders can upload a searchable PDF (100 pages, 20 MB and 240,000 extracted characters maximum) or paste a plan. The reader processes all pages, including appendices, in one OpenAI extraction. The interview and report reuse the reviewed brief and exact page excerpts, not the entire plan. Pages without readable text are listed before the interview; the founder can add missing chart figures. The original PDF is not archived. For PDFs over 4 MB, the browser reads the file locally using the bundled PDF.js reader and sends only the text to the API.

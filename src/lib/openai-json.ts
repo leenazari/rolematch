@@ -5,7 +5,8 @@ import type { CVData, PitchData, ResultsData } from "@/types";
 
 type Turn = { text: string; moveOn: boolean; finished: boolean; thinAnswer: boolean };
 type Results = {
-  pitch_extract: Omit<PitchData, "rawText">;
+  pitch_extract: Omit<PitchData, "rawText" | "sourceDocument">;
+  pitch_document: Omit<PitchData, "rawText" | "sourceDocument"> & { evidence: { page: number; quote: string }[] };
   cv_extract: Omit<CVData, "rawText" | "lovedSkills" | "avoidSkills">;
   pitch_question: Turn;
   career_question: Turn & { isGoldenThreadProbe: boolean };
@@ -25,12 +26,15 @@ const role = {
   yourStrengths: strings, developmentGaps: strings, nextStep: str,
   salary: object({ entry: str, established: str, senior: str, startingTier: choice("entry", "established", "senior") }),
 };
+const pitchFields = {
+  companyName: str, oneLineDescription: str, problem: str, targetCustomer: str, sector: str,
+  stage: choice("idea", "pre-revenue", "early revenue", "revenue", "scaling"),
+  teamSize: str, founderBackground: str, traction: str, ask: str,
+};
 const tasks = {
-  pitch_extract: { tokens: 2048, schema: object({
-    companyName: str, oneLineDescription: str, problem: str, targetCustomer: str, sector: str,
-    stage: choice("idea", "pre-revenue", "early revenue", "revenue", "scaling"),
-    teamSize: str, founderBackground: str, traction: str, ask: str,
-  }) },
+  pitch_extract: { tokens: 2048, schema: object(pitchFields) },
+  pitch_document: { tokens: 4000, schema: object({ ...pitchFields, evidence: { type: "array", maxItems: 12,
+    items: object({ page: { type: "integer", minimum: 1, maximum: 100 }, quote: str }) } }) },
   cv_extract: { tokens: 2048, schema: object({
     name: str, currentRole: str, sector: str, yearsExperience: { type: "number" },
     keySkills: strings, education: str, notableEmployers: strings,
@@ -47,13 +51,13 @@ const tasks = {
 
 /** Interactive requests never start a background job or retry a paid call. */
 export async function generateJson<K extends keyof Results>(task: K, instructions: string, input: string): Promise<Results[K]> {
-  if (input.length > 120_000) throw new PublicError("This input is too long. Please shorten it and try again.", 413);
+  if (input.length > (task === "pitch_document" ? 245_000 : 120_000)) throw new PublicError("This input is too long. Please shorten it and try again.", 413);
   if (!process.env.OPENAI_API_KEY) throw new Error("The AI service is not configured.");
   const interview = task === "pitch_question" || task === "career_question";
   const model = interview
     ? process.env.OPENAI_INTERVIEW_MODEL || "gpt-6.2-astra"
     : process.env.OPENAI_TEXT_MODEL || "gpt-6.2-sol";
-  const client = new OpenAI({ timeout: interview || task === "career_results" ? 52_000 : 24_000, maxRetries: 0 });
+  const client = new OpenAI({ timeout: task === "pitch_document" ? 110_000 : interview || task === "career_results" ? 52_000 : 24_000, maxRetries: 0 });
   const { tokens, schema } = tasks[task];
   try {
     const result = await client.responses.create({

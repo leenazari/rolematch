@@ -51,7 +51,15 @@ export type NextQuestionResponse = {
   error?: string;
 };
 
+export type PitchSource = {
+  kind: "pdf" | "text";
+  pageCount: number;
+  unreadablePages: number[];
+  founderNote?: string;
+  evidence: { page: number; quote: string }[];
+};
 export type PitchData = {
+  sourceDocument?: PitchSource;
   companyName: string;
   oneLineDescription: string;
   problem: string;

@@ -118,7 +118,7 @@ export default function PitchPage() {
                 Pitch your business.<br />Get honest feedback.
               </h1>
               <p className="text-lg text-slate-600 mb-3 max-w-xl mx-auto">
-                Upload your one-pager, have a friendly conversation, then get a written breakdown that doesn't pull punches.
+                Upload a one-pager, pitch deck or full business plan. Talk it through with an investor, then get a written breakdown of what holds up and what needs work.
               </p>
               <p className="text-xs text-slate-400">
                 For seed-stage founders. Your pitch and report are saved privately so your results can be recovered.

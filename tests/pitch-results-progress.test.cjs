@@ -31,8 +31,11 @@ async function setup(t) {
 
 test("the first feedback is readable while later sections prepare, and PDF download waits for the full report", async t => {
   const s = await setup(t);
+  assert.match(s.text(), /Your full report usually takes less than two minutes/);
+  assert.match(s.text(), /Your verdict appears first/);
   await renderer.act(async () => s.options.onProgress({ verdict: "Early verdict", strong: ["A real customer example."] }));
   assert.match(s.text(), /Early verdict/);
+  assert.doesNotMatch(s.text(), /Preparing your pitch report/);
   assert.match(s.text(), /A real customer example/);
   assert.match(s.text(), /Report in progress/);
   assert.doesNotMatch(s.text(), /What to do in the next 30 days/);
@@ -58,5 +61,17 @@ test("an interrupted report keeps its readable sections and offers Resume", asyn
   assert.match(s.text(), /Saved first section/);
   assert.match(s.text(), /Connection interrupted/);
   assert.match(s.text(), /Resume report/);
+  assert.equal(s.pdfButton().props.disabled, true);
+});
+
+test("a slow report updates its estimate without hiding first feedback or pretending the PDF is ready", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const s = await setup(t);
+  await renderer.act(async () => t.mock.timers.tick(119000));
+  assert.match(s.text(), /usually takes less than two minutes/);
+  await renderer.act(async () => s.options.onProgress({ verdict: "Early and still visible" }));
+  await renderer.act(async () => t.mock.timers.tick(1000));
+  assert.match(s.text(), /rest is taking a little longer/);
+  assert.match(s.text(), /Early and still visible/);
   assert.equal(s.pdfButton().props.disabled, true);
 });
