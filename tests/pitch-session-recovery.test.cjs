@@ -64,11 +64,12 @@ test('a lost save acknowledgement can be retried without appending the closing a
  assert.equal(b.archived.messages.filter(m=>m.role==='user').length,1);assert.equal(b.destinations.at(-1),'/pitch/results');act(()=>view.unmount());
 });
 test('results recover from the server despite missing tab data and a damaged cached report, without redirecting to the beginning',async t=>{
- const b=browser(t);b.client().checkpointPitch({...b.state,finished:true,draftAnswer:'',revision:8,
+ const b=browser(t);const client=b.client();const saved=client.checkpointPitch({...b.state,finished:true,draftAnswer:'',revision:8,
  messages:[...b.state.messages,{role:'user',text:'The saved closing.',questionNumber:7}],finishedAt:'2026-11-27T16:02:00Z'},access);
+ await client.persistPitchSession(saved);
  b.session.set('pitchperfect_data','{broken');b.session.set('pitchperfect_critique','{broken');b.quota=true;
  let started=0;const Page=loadTs('src/app/pitch/results/page.tsx',{'next/navigation':{useRouter:()=>b.router},
- '@/lib/pitch-session-client':b.client(),'@/lib/pitch-report-client':{reportAccess:()=>access,loadPitchReport:async()=>{started++;return{data:fixture,generatedAt:'2026-11-27T16:03:00Z',pdfSaved:true};}}}).default;
+ '@/lib/pitch-session-client':b.client(),'@/lib/pitch-report-client':{...loadTs('src/lib/pitch-report-client.ts'),reportAccess:()=>access,claimReportView:async()=> 'open',loadPitchReport:async()=>{started++;return{data:fixture,generatedAt:'2026-11-27T16:03:00Z',pdfSaved:true};}}}).default;
  let view;await act(async()=>{view=create(React.createElement(Page));});
  assert.equal(started,1);assert.match(JSON.stringify(view.toJSON()),/Market and competitors/);assert.deepEqual(b.destinations,[]);
  act(()=>view.unmount());
@@ -82,11 +83,11 @@ test('an older recovery response cannot replace a closing draft typed while the 
  assert.equal(recovered.state.draftAnswer,'New words while reconnecting.');
  assert.equal(client.savedPitchSession().state.revision,7);
 });
-test('an optional email typo cannot duplicate the closing answer when corrected',async t=>{
+test('a legacy founder email is ignored and never blocks or accompanies the closing answer',async t=>{
  const b=browser(t);b.client().checkpointPitch({...b.state,draftAnswer:'Only one closing answer.',recipientEmail:'not-an-email'},access);let view;
  await act(async()=>{view=create(React.createElement(b.page(b.client())));});
- await act(async()=>button(view,'Send my answer').props.onClick());assert.deepEqual(b.destinations,[]);
- act(()=>view.root.findByType('input').props.onChange({target:{value:'founder@example.invalid'}}));
+ assert.equal(view.root.findAllByType('input').filter(n=>n.props.type==='email').length,0);
  await act(async()=>button(view,'Send my answer').props.onClick());
- assert.equal(b.archived.messages.filter(m=>m.role==='user').length,1);assert.equal(b.archived.recipientEmail,'founder@example.invalid');act(()=>view.unmount());
+ assert.equal(b.archived.messages.filter(m=>m.role==='user').length,1);
+ assert.equal(Object.hasOwn(b.archived,'recipientEmail'),false);assert.deepEqual(b.destinations,['/pitch/results']);act(()=>view.unmount());
 });

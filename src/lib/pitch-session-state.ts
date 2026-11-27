@@ -5,7 +5,6 @@ export type PitchSessionState = {
   pitchData: PitchData; messages: PitchMessage[]; currentQuestion: number; followUpsThisQuestion: number;
   draftAnswer: string; hasStarted: boolean; finished: boolean; pendingQuestion: boolean;
   revision: number; startedAt: string | null; finishedAt: string | null;
-  recipientEmail?: string;
 };
 export function isPitchSession(value: unknown): value is PitchSessionState {
   const s = value as PitchSessionState;
@@ -17,14 +16,14 @@ export function isPitchSession(value: unknown): value is PitchSessionState {
     Number.isInteger(s.followUpsThisQuestion) && s.followUpsThisQuestion >= 0 && s.followUpsThisQuestion <= 10 &&
     typeof s.draftAnswer === "string" && s.draftAnswer.length <= 30_000 &&
     typeof s.hasStarted === "boolean" && typeof s.finished === "boolean" && typeof s.pendingQuestion === "boolean" &&
-    (s.recipientEmail === undefined || (typeof s.recipientEmail === "string" && s.recipientEmail.length <= 254 &&
-      (!s.finished || !s.recipientEmail.trim() || validPitchEmail(s.recipientEmail.trim())))) &&
     Number.isSafeInteger(s.revision) && s.revision >= 0 && JSON.stringify(s).length <= 750_000 &&
     (s.startedAt === null || (typeof s.startedAt === "string" && !isNaN(Date.parse(s.startedAt)))) &&
     (s.finishedAt === null || (typeof s.finishedAt === "string" && !isNaN(Date.parse(s.finishedAt))));
 }
-export function validPitchEmail(value: unknown): value is string {
-  return typeof value === "string" && value.length <= 254 && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(value);
+// Old tabs may still submit the retired form field. Never keep or return it.
+export function withoutFounderEmail(state: PitchSessionState): PitchSessionState {
+  const { recipientEmail: _retired, ...clean } = state as PitchSessionState & { recipientEmail?: unknown };
+  return clean;
 }
 export function hasClosingAnswer(messages: PitchMessage[]): boolean {
   return messages.some((m, i) => m.role === "user" && !!m.text.trim() &&

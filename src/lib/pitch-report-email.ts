@@ -1,34 +1,30 @@
 import { PublicError } from "@/lib/public-error";
 import "server-only";
 import { pitchStorageClient, PITCH_PDF_BUCKET } from "@/lib/pitch-storage";
-import { tokenHash, validReportAccess } from "@/lib/pitch-access";
-import { validPitchEmail } from "@/lib/pitch-session-state";
-export { validPitchEmail } from "@/lib/pitch-session-state";
 
-type Report = { id: string; company_name: string; pdf_path: string | null; access_token_hash?: string };
-type Delivery = { id: string; report_id: string; recipient_role: "owner" | "participant"; recipient_email: string;
+type Report = { id: string; company_name: string; pdf_path: string | null };
+type Delivery = { id: string; report_id: string; recipient_role: "owner"; recipient_email: string;
   status: string; attempts: number; updated_at: string };
 export function pitchEmailEnabled() {
   return process.env.PITCH_REPORT_EMAIL_ENABLED === "true" && !!process.env.RESEND_API_KEY;
 }
-export function pitchEmailMessage(companyName: string, role: "owner" | "participant") {
+function pitchEmailMessage(companyName: string) {
   const company = companyName.replace(/[\r\n]/g, " ").slice(0, 160);
-  return { subject: `${role === "owner" ? "Pitch Perfect report" : "Your Pitch Perfect report"}: ${company}`,
-    text: role === "owner" ? `A Pitch Perfect report for ${company} is ready. The PDF is attached.\n\nPitch Perfect`
-      : `Thanks for completing your pitch for ${company}. Your full Pitch Perfect report is attached.\n\nPitch Perfect` };
+  return { subject: `Pitch Perfect report: ${company}`,
+    text: `A Pitch Perfect report for ${company} is ready. The PDF is attached.\n\nPitch Perfect` };
 }
-async function enqueue(reportId: string, role: "owner" | "participant", email: string) {
+async function enqueue(reportId: string, email: string) {
   const db = pitchStorageClient();
   const address = email.trim().toLowerCase();
-  if (!validPitchEmail(address)) throw new PublicError("Please enter a valid email address.");
+  if (address.length > 254 || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(address)) throw new PublicError("A single owner email address is required.");
   const { data, error } = await db.from("pitch_email_outbox").insert({ report_id: reportId,
-    recipient_role: role, recipient_email: address, status: pitchEmailEnabled() ? "pending" : "awaiting_configuration",
+    recipient_role: "owner", recipient_email: address, status: pitchEmailEnabled() ? "pending" : "awaiting_configuration",
   }).select("*").single();
   if (!error) return data as Delivery;
   if (error.code !== "23505") throw new PublicError("Your email request could not be saved. Please try again.");
-  const existing = await db.from("pitch_email_outbox").select("*").eq("report_id", reportId).eq("recipient_role", role).single();
+  const existing = await db.from("pitch_email_outbox").select("*").eq("report_id", reportId).eq("recipient_role", "owner").single();
   if (existing.error || !existing.data) throw new PublicError("Your email request could not be loaded. Please try again.");
-  if (existing.data.recipient_email !== address) throw new PublicError("An email copy has already been requested for this report. Check the original address or download the PDF.");
+  if (existing.data.recipient_email !== address) throw new PublicError("The owner address for this delivery does not match the configured owner.");
   return existing.data as Delivery;
 }
 async function deliver(report: Report, delivery: Delivery): Promise<"sent" | "queued"> {
@@ -43,10 +39,10 @@ async function deliver(report: Report, delivery: Delivery): Promise<"sent" | "qu
   try {
     const { data: blob, error: downloadError } = await db.storage.from(PITCH_PDF_BUCKET).download(report.pdf_path);
     if (downloadError || !blob) throw new PublicError("Saved PDF temporarily unavailable.");
-    const message = pitchEmailMessage(report.company_name, delivery.recipient_role);
+    const message = pitchEmailMessage(report.company_name);
     const response = await fetch("https://api.resend.com/emails", { method: "POST", signal: AbortSignal.timeout(15_000),
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json",
-        "Idempotency-Key": `pitch-perfect/${report.id}/${delivery.recipient_role}` },
+        "Idempotency-Key": `pitch-perfect/${report.id}/owner` },
       body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL || "outreach@voicereach.co.uk", to: [delivery.recipient_email],
         ...message, attachments: [{ filename: `PitchPerfect_${report.company_name.replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 80)}.pdf`,
           content: Buffer.from(await blob.arrayBuffer()).toString("base64") }] }),
@@ -65,28 +61,10 @@ async function deliver(report: Report, delivery: Delivery): Promise<"sent" | "qu
     throw new PublicError("Your email request is saved, but delivery needs a retry. Your PDF remains available.");
   }
 }
-export async function queuePitchReportEmails(reportId: string) {
+export async function queueOwnerPitchEmail(reportId: string) {
   const db = pitchStorageClient();
-  const { data, error } = await db.from("pitch_reports").select("id,company_name,pdf_path,access_token_hash").eq("id", reportId).single();
+  const { data, error } = await db.from("pitch_reports").select("id,company_name,pdf_path").eq("id", reportId).single();
   if (error || !data?.pdf_path) throw new PublicError("Saved report is not ready for email.");
   const address = process.env.PITCH_REPORT_OWNER_EMAIL || process.env.ADMIN_EMAIL || "lee.nazari@gmail.com";
-  // A matching ID alone is not authorization: only the same session capability
-  // may supply the opted-in participant address for this report.
-  const session = await db.from("pitch_sessions").select("state").eq("id", reportId)
-    .eq("access_token_hash", data.access_token_hash).maybeSingle();
-  if (session.error) throw new PublicError("The participant email preference could not be loaded. Please retry.");
-  const requests = [enqueue(reportId, "owner", address).then(delivery => deliver(data, delivery))];
-  const recipient = session.data?.state?.recipientEmail?.trim();
-  if (validPitchEmail(recipient)) requests.push(enqueue(reportId, "participant", recipient).then(delivery => deliver(data, delivery)));
-  const deliveries = await Promise.allSettled(requests);
-  if (deliveries.some(result => result.status === "rejected")) throw new PublicError("Some PDF emails need a retry. Saved reports are unaffected.");
-  return deliveries;
-}
-export async function emailPitchReport(reportId: string, accessToken: string, email: string) {
-  if (!validReportAccess(reportId, accessToken) || !validPitchEmail(email)) throw new PublicError("Please check your report and email address.");
-  const { data, error } = await pitchStorageClient().from("pitch_reports").select("id,company_name,pdf_path")
-    .eq("id", reportId).eq("access_token_hash", tokenHash(accessToken)).maybeSingle();
-  if (error || !data) throw new PublicError("Saved report not found.");
-  if (!data.pdf_path) throw new PublicError("Your PDF is still preparing. Please try again when it is ready.");
-  return deliver(data, await enqueue(reportId, "participant", email));
+  return deliver(data, await enqueue(reportId, address));
 }

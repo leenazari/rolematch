@@ -121,7 +121,7 @@ export default function PitchPage() {
                 Upload a one-pager, pitch deck or full business plan. Talk it through with an investor, then get a written breakdown of what holds up and what needs work.
               </p>
               <p className="text-xs text-slate-400">
-                For seed-stage founders. Your pitch and report are saved privately so your results can be recovered.
+                For seed-stage founders. Download your PDF before leaving the results page. Pitch Perfect keeps a private archive.
               </p>
             </>
           )}
@@ -129,9 +129,9 @@ export default function PitchPage() {
 
         {stage === "welcome" && resume ? <section className="max-w-2xl mx-auto mb-8 rounded-2xl border border-purple-200 bg-purple-50 p-6">
           <h2 className="font-semibold text-slate-900">Your saved pitch for {resume.company}</h2>
-          <p className="text-sm text-slate-600 mt-2 mb-4">Pick up where you left off. Your answers are saved.</p>
+          <p className="text-sm text-slate-600 mt-2 mb-4">Pick up where you left off. Once you open your completed report, download it before leaving.</p>
           <button className="rounded-xl bg-purple-600 px-5 py-3 text-white font-medium" onClick={() => router.push(resume.finished ? "/pitch/results" : "/pitch/conversation")}>
-            {resume.finished ? "View saved results" : "Resume my pitch"}
+            {resume.finished ? "Continue to my report" : "Resume my pitch"}
           </button>
         </section> : null}
 

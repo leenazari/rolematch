@@ -5,19 +5,19 @@ const renderer = require("react-test-renderer");
 const { loadTs } = require("./load-ts.cjs");
 const fixture = require("./pitch-insights.fixture.cjs");
 
-async function setup(t) {
+async function setup(t, claim = async () => "open") {
   const original = global.sessionStorage;
   const storage = new Map([
     ["pitchperfect_data", '{"companyName":"Tilly"}'],
     ["pitchperfect_conversation", '[{"role":"user","text":"A sandwich lost 30p."}]'],
   ]);
-  global.sessionStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) };
+  global.sessionStorage = { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
   const router = { push() {} };
   let options, resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   const Page = loadTs("src/app/pitch/results/page.tsx", {
     "next/navigation": { useRouter: () => router },
-    "@/lib/pitch-report-client": { reportAccess: () => ({}), loadPitchReport: async (pd, conv, received) => { options = received; return promise; } },
+    "@/lib/pitch-report-client": { ...loadTs("src/lib/pitch-report-client.ts"), claimReportView: claim, reportAccess: () => ({ reportId: "fixture", accessToken: "recovery" }), loadPitchReport: async (pd, conv, received) => { options = received; return promise; } },
     "./report-insights": loadTs("src/app/pitch/results/report-insights.tsx"),
   }).default;
   let view;
@@ -51,7 +51,9 @@ test("the first feedback is readable while later sections prepare, and PDF downl
   assert.match(s.text(), /Where AI could help your business/);
   assert.doesNotMatch(s.text(), /Report in progress/);
   assert.equal(s.pdfButton().props.disabled, false);
-  assert.deepEqual(JSON.parse(s.storage.get("pitchperfect_critique")), fixture);
+  assert.equal(s.storage.size, 0);
+  assert.match(s.text(), /Once you leave or refresh this page/);
+  assert.equal(s.view.root.findAllByType("input").filter(n => n.props.type === "email").length, 0);
 });
 
 test("an interrupted report keeps its readable sections and offers Resume", async t => {
@@ -74,4 +76,46 @@ test("a slow report updates its estimate without hiding first feedback or preten
   assert.match(s.text(), /rest is taking a little longer/);
   assert.match(s.text(), /Early and still visible/);
   assert.equal(s.pdfButton().props.disabled, true);
+});
+
+test("a tab that loses the one-time handoff cannot display or download a completed report", async t => {
+  const s = await setup(t, async () => "closed");
+  await renderer.act(async () => s.resolve({ data: fixture, generatedAt: "2026-11-27T16:03:00Z", pdfSaved: true }));
+  assert.match(s.text(), /No report is available here/);
+  assert.doesNotMatch(s.text(), /Market and competitors|Download full PDF/);
+  assert.equal(s.storage.size, 0);
+});
+test("a failed download stays on the completed page and retries with the same in-memory access", async t => {
+  const previous = { fetch: global.fetch, document: global.document }, calls = [];
+  t.after(() => Object.assign(global, previous));
+  let viewToken, clicks = 0;
+  const s = await setup(t, async (_old, view) => { viewToken = view; return "open"; });
+  await renderer.act(async () => s.resolve({ data: fixture, generatedAt: "2026-11-27T16:03:00Z", pdfSaved: true }));
+  global.document = { createElement: () => ({ click() { clicks++; } }), body: { appendChild() {}, removeChild() {} } };
+  global.fetch = async (url, options) => {
+    assert.equal(url, "/api/generate-pitch-pdf"); calls.push(JSON.parse(options.body));
+    return calls.length === 1 ? new Response(null, {status:503}) : new Response("%PDF-test", {headers:{"content-type":"application/pdf"}});
+  };
+  // The browser releases the object URL asynchronously.
+  t.mock.timers.enable({apis:["setTimeout"]});
+  for (let i=0; i<3; i++) {
+    await renderer.act(async () => s.pdfButton().props.onClick());
+    if (!i) assert.match(s.text(), /didn’t download/);
+  }
+  assert.deepEqual(calls, [viewToken,viewToken,viewToken]);assert.equal(clicks,2);
+  assert.match(s.text(), /Download started/); assert.equal(s.storage.size,0);
+  t.mock.timers.tick(30_000);
+});
+
+test("a lost handoff acknowledgement retries the same claim without another generation or losing the PDF", async t => {
+  const claims = [];
+  const s = await setup(t, async (_old, view) => {
+    claims.push(view); if (claims.length === 1) throw new Error("Claim acknowledgement lost"); return "open";
+  });
+  await renderer.act(async () => s.resolve({ data: fixture, generatedAt:"2026-11-27T16:03:00Z", pdfSaved:true }));
+  assert.match(s.text(), /Claim acknowledgement lost/);
+  const retry = s.view.root.findAllByType("button").find(b => b.children.join("") === "Try generating again");
+  await renderer.act(async () => retry.props.onClick());
+  assert.equal(claims.length,2); assert.equal(claims[0],claims[1]);
+  assert.equal(s.pdfButton().props.disabled,false); assert.equal(s.storage.size,0);
 });
