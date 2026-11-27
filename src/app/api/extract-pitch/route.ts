@@ -1,5 +1,8 @@
+import { readPdfText } from "@/lib/pdf-text";
+import { checkRequest, checkUsage } from "@/lib/api-guard";
+import { PublicError, safeFailure } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, HAIKU } from "@/lib/anthropic";
+import { generateJson } from "@/lib/openai-json";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -33,22 +36,7 @@ Rules:
 async function extractFromText(rawText: string) {
   const trimmed = rawText.slice(0, 12000);
 
-  const msg = await anthropic.messages.create({
-    model: HAIKU,
-    max_tokens: 1024,
-    system: EXTRACT_PROMPT,
-    messages: [{ role: "user", content: trimmed }],
-  });
-
-  const textBlock = msg.content.find(function (b) { return b.type === "text"; });
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No text response from AI");
-  }
-
-  let cleaned = textBlock.text.trim();
-  cleaned = cleaned.replace(/```json|```/g, "").trim();
-
-  const data = JSON.parse(cleaned);
+  const data = await generateJson("pitch_extract", EXTRACT_PROMPT, trimmed);
 
   function scrubDashes(value: any): any {
     if (typeof value === "string") {
@@ -79,41 +67,9 @@ async function extractFromText(rawText: string) {
   };
 }
 
-async function tryParsePdf(buffer: Buffer): Promise<string> {
-  try {
-    const pdfParse = (await import("pdf-parse")).default;
-    const parsed = await pdfParse(buffer, { max: 10 });
-    return parsed.text || "";
-  } catch (e: any) {
-    const errorMsg = e?.message || "";
-    const isImageError =
-      errorMsg.includes("image") ||
-      errorMsg.includes("XObject") ||
-      errorMsg.includes("JPEG") ||
-      errorMsg.includes("JBIG2") ||
-      errorMsg.includes("CCITTFax") ||
-      errorMsg.includes("colour") ||
-      errorMsg.includes("color");
-
-    if (isImageError) {
-      try {
-        const pdfParse = (await import("pdf-parse")).default;
-        const parsed = await pdfParse(buffer, {
-          max: 10,
-          pagerender: function () { return Promise.resolve(""); },
-        });
-        return parsed.text || "";
-      } catch (e2) {
-        throw new Error("Could not extract text from this PDF. It may be image-based or designed in a tool like Canva. Please paste the text directly.");
-      }
-    }
-
-    throw new Error("Could not read this PDF. Please try a different file or paste the text directly.");
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
+    checkRequest(req, 4_500_000);
     const contentType = req.headers.get("content-type") || "";
 
     let rawText = "";
@@ -127,15 +83,12 @@ export async function POST(req: NextRequest) {
       if (!file) {
         return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
       }
-      const buffer = Buffer.from(await file.arrayBuffer());
+      if (file.size > 4_500_000) throw new PublicError("This document is too large.", 413);
 
       try {
-        rawText = await tryParsePdf(buffer);
+        rawText = await readPdfText(file, 10);
       } catch (e: any) {
-        return NextResponse.json(
-          { ok: false, error: e?.message || "Could not read this PDF. Please paste the text directly." },
-          { status: 400 }
-        );
+        return safeFailure(e, "Could not read this PDF. Please paste the text directly.", 400);
       }
     }
 
@@ -153,13 +106,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    await checkUsage(req, "upload");
     const data = await extractFromText(rawText);
     return NextResponse.json({ ok: true, data });
-  } catch (e: any) {
-    console.error("extract-pitch error:", e);
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Failed to extract pitch information" },
-      { status: 500 }
-    );
+  } catch (error) {
+    return safeFailure(error, "Could not read this pitch. Please paste the text or try again.");
   }
 }

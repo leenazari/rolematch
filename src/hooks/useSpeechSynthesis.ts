@@ -1,141 +1,92 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { expandPitchSpokenNumbers } from "@/lib/pitch-spoken-numbers";
 
-export function useSpeechSynthesis() {
+export function useSpeechSynthesis(persona: "career" | "investor" = "career") {
   const [speaking, setSpeaking] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const currentUrlRef = useRef<string | null>(null);
+  const play = useRef(0);
+  const request = useRef<AbortController | null>(null);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const audioUrl = useRef<string | null>(null);
+  const utterance = useRef<SpeechSynthesisUtterance | null>(null);
 
-  useEffect(function () {
-    return function () {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      if (currentUrlRef.current) {
-        URL.revokeObjectURL(currentUrlRef.current);
-        currentUrlRef.current = null;
-      }
-    };
+  const clearAudio = useCallback(() => {
+    if (audio.current) {
+      audio.current.onplay = audio.current.onended = audio.current.onerror = null;
+      audio.current.pause();
+      audio.current = null;
+    }
+    if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
+    audioUrl.current = null;
   }, []);
-
-  function cleanTextForSpeech(text: string): string {
-    return text.replace(/\bread\b/gi, "look at");
-  }
-
-  function speakWithBrowser(text: string, onEnd?: () => void) {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      if (onEnd) onEnd();
-      return;
+  const cancel = useCallback(() => {
+    play.current++;
+    request.current?.abort();
+    request.current = null;
+    clearAudio();
+    if (utterance.current) {
+      utterance.current.onstart = utterance.current.onend = utterance.current.onerror = null;
+      window.speechSynthesis?.cancel();
+      utterance.current = null;
     }
-    window.speechSynthesis.cancel();
-    const cleaned = cleanTextForSpeech(text);
-    const utter = new SpeechSynthesisUtterance(cleaned);
-    const voices = window.speechSynthesis.getVoices();
-    const preferred =
-      voices.find(function (v) { return v.name.includes("Google UK English Female"); }) ||
-      voices.find(function (v) { return v.lang === "en-GB"; }) ||
-      voices.find(function (v) { return v.lang.startsWith("en"); });
-    if (preferred) utter.voice = preferred;
-    utter.rate = 1.0;
-    utter.pitch = 1.0;
-    utter.onstart = function () { setSpeaking(true); };
-    utter.onend = function () {
+  }, [clearAudio]);
+  useEffect(() => cancel, [cancel]);
+
+  const speak = useCallback(async (text: string, onEnd?: () => void) => {
+    cancel();
+    const id = play.current;
+    const original = text.replace(/\bread\b/gi, "look at");
+    const script = persona === "investor" ? expandPitchSpokenNumbers(original) : original;
+    let ended = false, usedDevice = false;
+    const current = () => !ended && play.current === id;
+    const finish = () => {
+      if (!current()) return;
+      ended = true;
+      clearAudio();
+      utterance.current = null;
+      request.current = null;
       setSpeaking(false);
-      if (onEnd) onEnd();
+      onEnd?.();
     };
-    utter.onerror = function () {
-      setSpeaking(false);
-      if (onEnd) onEnd();
+    const useDevice = () => {
+      if (!current() || usedDevice) return;
+      usedDevice = true;
+      clearAudio();
+      // Some browser voices call a third-party service. Only allow installed English voices.
+      const synth = window.speechSynthesis;
+      const voices = synth?.getVoices().filter(voice => voice.localService && /^en\b/i.test(voice.lang));
+      const voice = voices?.find(v => v.lang.toLowerCase() === "en-gb") || voices?.[0];
+      if (!voice || typeof SpeechSynthesisUtterance === "undefined") return finish();
+      const utter = new SpeechSynthesisUtterance(script);
+      utterance.current = utter;
+      utter.voice = voice;
+      utter.onstart = () => { if (current()) setSpeaking(true); };
+      utter.onend = utter.onerror = finish;
+      try { synth.speak(utter); } catch { finish(); }
     };
-    window.speechSynthesis.speak(utter);
-  }
-
-  const speak = useCallback(async function (text: string, onEnd?: () => void) {
-    if (!text || typeof window === "undefined") {
-      if (onEnd) onEnd();
-      return;
-    }
-
-    if (audioRef.current) {
-      try { audioRef.current.pause(); } catch (e) {}
-      audioRef.current = null;
-    }
-    if (currentUrlRef.current) {
-      URL.revokeObjectURL(currentUrlRef.current);
-      currentUrlRef.current = null;
-    }
-
-    const cleaned = cleanTextForSpeech(text);
-
+    if (!script || typeof window === "undefined") return finish();
+    const controller = new AbortController();
+    request.current = controller;
     try {
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: cleaned }),
-      });
-
-      if (!res.ok || !res.body) {
-        console.warn("ElevenLabs failed, falling back to browser TTS");
-        speakWithBrowser(text, onEnd);
-        return;
-      }
-
+      const res = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: script, persona }), signal: controller.signal });
+      if (!current()) return;
+      if (!res.ok || !res.body) return useDevice();
       const blob = await res.blob();
+      if (!current()) return;
+      if (!blob.size) return useDevice();
       const url = URL.createObjectURL(blob);
-      currentUrlRef.current = url;
+      audioUrl.current = url;
+      const player = new Audio(url);
+      audio.current = player;
+      player.onplay = () => { if (current()) setSpeaking(true); };
+      player.onended = finish;
+      player.onerror = useDevice;
+      await player.play();
+    } catch { useDevice(); }
+  }, [cancel, clearAudio, persona]);
 
-      const audio = new Audio(url);
-      audioRef.current = audio;
-
-      audio.onplay = function () { setSpeaking(true); };
-      audio.onended = function () {
-        setSpeaking(false);
-        if (currentUrlRef.current) {
-          URL.revokeObjectURL(currentUrlRef.current);
-          currentUrlRef.current = null;
-        }
-        audioRef.current = null;
-        if (onEnd) onEnd();
-      };
-      audio.onerror = function () {
-        setSpeaking(false);
-        if (currentUrlRef.current) {
-          URL.revokeObjectURL(currentUrlRef.current);
-          currentUrlRef.current = null;
-        }
-        audioRef.current = null;
-        if (onEnd) onEnd();
-      };
-
-      try {
-        await audio.play();
-      } catch (playErr) {
-        console.warn("Audio play failed:", playErr);
-        setSpeaking(false);
-        speakWithBrowser(text, onEnd);
-      }
-    } catch (e) {
-      console.warn("TTS fetch failed, falling back:", e);
-      speakWithBrowser(text, onEnd);
-    }
-  }, []);
-
-  const stopSpeaking = useCallback(function () {
-    if (audioRef.current) {
-      try { audioRef.current.pause(); } catch (e) {}
-      audioRef.current = null;
-    }
-    if (currentUrlRef.current) {
-      URL.revokeObjectURL(currentUrlRef.current);
-      currentUrlRef.current = null;
-    }
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    setSpeaking(false);
-  }, []);
-
+  const stopSpeaking = useCallback(() => { cancel(); setSpeaking(false); }, [cancel]);
   return { speak, stopSpeaking, speaking };
 }

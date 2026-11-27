@@ -2,12 +2,12 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useInterviewRecorder } from "@/hooks/useInterviewRecorder";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import VoiceOrb from "@/components/VoiceOrb";
 import type { CVData, Message } from "@/types";
 
-type Phase = "idle" | "ai_speaking" | "listening" | "finalising" | "reviewing" | "thinking";
+type Phase = "idle" | "connecting" | "ai_speaking" | "listening" | "finalising" | "reviewing" | "thinking";
 
 const INTRO_VIDEO_URL = "https://12gousqtbfwu0esz.public.blob.vercel-storage.com/rolematch.mp4";
 
@@ -26,7 +26,16 @@ export default function ConversationPage() {
   const [videoBuffering, setVideoBuffering] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  const { supported: voiceSupported, listening, transcript, interim, start, stop, hardReset } = useSpeechRecognition();
+  const recordingBase = useRef("");
+  const { supported: voiceSupported, start, stop, reset, retry, canRetry, error: recordingError,
+    status: recordingStatus, liveText, liveStatus } = useInterviewRecorder({
+    onComplete: captured => {
+      setDraftAnswer([recordingBase.current, captured].filter(Boolean).join(" "));
+      setPhase("reviewing");
+    },
+    onError: () => setPhase("reviewing"),
+  }, "career");
+  useEffect(() => { if (recordingStatus === "transcribing") setPhase("finalising"); }, [recordingStatus]);
   const { speak, speaking, stopSpeaking } = useSpeechSynthesis();
 
   useEffect(function () {
@@ -135,43 +144,23 @@ export default function ConversationPage() {
     }
   }
 
-  function handleStartListening() {
+  async function beginRecording(add: boolean) {
     if (speaking) stopSpeaking();
-    hardReset();
-    setDraftAnswer("");
-    setTimeout(function () {
-      start();
-      setPhase("listening");
-    }, 100);
-  }
-
-  async function handleStopListening() {
-    setPhase("finalising");
-    const final = await stop();
-    const captured = (final || "").trim();
-    setDraftAnswer(function (prev) {
-      const combined = prev ? prev + " " + captured : captured;
-      return combined.trim();
-    });
-    setPhase("reviewing");
-  }
-
-  function handleResumeListening() {
-    hardReset();
-    setTimeout(function () {
-      start();
-      setPhase("listening");
-    }, 100);
+    recordingBase.current = add ? draftAnswer : "";
+    setDraftAnswer(recordingBase.current);
+    setPhase("connecting");
+    if (await start()) setPhase("listening");
   }
 
   function handleClearAndRetry() {
-    hardReset();
+    reset();
     setDraftAnswer("");
     setPhase("idle");
   }
 
   async function handleSendAnswer() {
     if (!draftAnswer.trim()) return;
+    reset();
     const userMsg: Message = { role: "user", text: draftAnswer.trim() };
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
@@ -183,22 +172,6 @@ export default function ConversationPage() {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <div className="text-slate-500">Loading...</div>
-      </main>
-    );
-  }
-
-  if (!voiceSupported) {
-    return (
-      <main className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-md">
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Voice not supported</h1>
-          <p className="text-slate-600 mb-6">
-            This browser doesn't support voice input. Please open RoleMatch in Chrome or Edge on a desktop or Android device.
-          </p>
-          <button onClick={function () { router.push("/"); }} className="text-indigo-600 underline">
-            Back to start
-          </button>
-        </div>
       </main>
     );
   }
@@ -237,7 +210,7 @@ export default function ConversationPage() {
               We'll go through seven questions about what you actually want from work. Should take about ten minutes.
             </p>
             <p className="text-slate-500 text-sm mb-8">
-              Speak naturally. There are no right answers. The more honest you are, the better the suggestions.
+              Your adviser has an AI-generated voice. Speak naturally. There are no right answers.
             </p>
             <button
               onClick={startConversation}
@@ -321,20 +294,17 @@ export default function ConversationPage() {
                     <>Your answer</>
                   )}
                 </div>
-                <p className="text-lg text-slate-900 leading-relaxed min-h-[2rem]">
-                  {phase === "reviewing" ? (
-                    draftAnswer ? draftAnswer : <span className="text-slate-400 italic">Nothing captured. Try again.</span>
-                  ) : (
-                    <>
-                      {draftAnswer ? <span>{draftAnswer} </span> : null}
-                      {transcript ? <span>{transcript} </span> : null}
-                      <span className="text-slate-500 italic">{interim}</span>
-                      {!draftAnswer && !transcript && !interim ? (
-                        <span className="text-slate-400 italic">Start speaking...</span>
-                      ) : null}
-                    </>
-                  )}
-                </p>
+                {phase === "reviewing" ? (
+                  <textarea aria-label="Your answer" value={draftAnswer}
+                    onChange={e => setDraftAnswer(e.target.value)} placeholder="Review or type your answer"
+                    className="w-full min-h-24 rounded-xl border border-slate-300 p-3 text-lg text-slate-900" />
+                ) : (
+                  <p aria-live="polite" className="text-lg text-slate-900 leading-relaxed min-h-[2rem]">
+                    {[draftAnswer, liveText].filter(Boolean).join(" ") ||
+                      (liveStatus === "live" ? "Start speaking..." : "Recording. Your words will appear after Stop.")}
+                  </p>
+                )}
+                {recordingError ? <p role="status" className="mt-2 text-sm text-amber-800">{recordingError}</p> : null}
               </div>
             ) : null}
 
@@ -358,27 +328,31 @@ export default function ConversationPage() {
                   </button>
                 ) : null}
 
-                {phase === "finalising" ? (
+                {phase === "finalising" || phase === "connecting" ? (
                   <button
                     disabled
                     className="px-8 py-4 bg-amber-100 text-amber-700 rounded-2xl font-medium cursor-not-allowed"
                   >
-                    Capturing your last words...
+                    {phase === "connecting" ? "Connecting your microphone..." : "Capturing your last words..."}
                   </button>
                 ) : null}
 
                 {phase === "idle" && !finished ? (
-                  <button
-                    onClick={handleStartListening}
-                    className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200"
-                  >
-                    Tap to answer
-                  </button>
+                  <>
+                    {voiceSupported ? <button onClick={() => beginRecording(false)}
+                      className="px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200">
+                      Tap to answer
+                    </button> : null}
+                    <button onClick={() => { reset(); setDraftAnswer(""); setPhase("reviewing"); }}
+                      className="px-6 py-4 bg-white border-2 border-indigo-300 text-indigo-700 rounded-2xl font-medium">
+                      Type my answer
+                    </button>
+                  </>
                 ) : null}
 
                 {phase === "listening" ? (
                   <button
-                    onClick={handleStopListening}
+                    onClick={stop}
                     className="px-8 py-4 bg-red-500 text-white rounded-2xl hover:bg-red-600 font-medium shadow-lg shadow-red-200"
                   >
                     Stop
@@ -387,12 +361,13 @@ export default function ConversationPage() {
 
                 {phase === "reviewing" ? (
                   <>
-                    <button
-                      onClick={handleResumeListening}
+                    {canRetry ? <button onClick={retry} className="px-6 py-4 rounded-2xl border">Retry transcription</button> : null}
+                    {voiceSupported ? <button
+                      onClick={() => beginRecording(true)}
                       className="px-6 py-4 bg-white border-2 border-indigo-300 text-indigo-700 rounded-2xl hover:bg-indigo-50 font-medium"
                     >
                       Add more
-                    </button>
+                    </button> : null}
                     <button
                       onClick={handleClearAndRetry}
                       className="px-6 py-4 bg-white border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 font-medium"

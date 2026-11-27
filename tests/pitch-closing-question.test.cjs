@@ -5,10 +5,10 @@ const { loadTs } = require("./load-ts.cjs");
 function setup(reply = { text: "Next question?", moveOn: true, finished: false }) {
   const requests = [];
   const { POST } = loadTs("src/app/api/pitch-next-question/route.ts", {
-    "@/lib/anthropic": { HAIKU: "test-model", anthropic: { messages: { create: async request => {
+    "@/lib/openai-json": { generateJson: async (...request) => {
       requests.push(request);
-      return { content: [{ type: "text", text: JSON.stringify(reply) }] };
-    } } } },
+      return reply;
+    } },
   });
   const ask = async (currentQuestion, followUpsThisQuestion = 0, history = [
     { role: "ai", text: "The funding question", questionNumber: currentQuestion },
@@ -80,4 +80,19 @@ test("closing cannot finish without the question and a non-empty answer", async 
     assert.equal((await s.ask(7, 0, history)).finished, false);
   }
   assert.equal(s.requests.length, 0);
+});
+
+test("an evidence question about a trial period is preserved, while a delivery promise becomes a question", async () => {
+  const text = "What changed for the paying sites after 6 weeks?";
+  assert.equal((await setup({ text, moveOn: false }).ask(3)).text, text);
+  const promised = await setup({ text: "I'll email you the report in 2 days.", moveOn: false }).ask(3);
+  assert.match(promised.text, /\?$/);
+  assert.doesNotMatch(promised.text, /email|report/i);
+});
+
+test("after two follow-ups a reluctant interviewer still asks the next core topic", async () => {
+  const reply = await setup({ text: "One more about what you built?", moveOn: false }).ask(3, 2);
+  assert.equal(reply.questionNumber, 4);
+  assert.equal(reply.followUpsThisQuestion, 0);
+  assert.match(reply.text, /customers could you realistically reach/);
 });

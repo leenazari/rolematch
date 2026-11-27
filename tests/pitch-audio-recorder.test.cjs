@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const React = require("react");
 const { create, act } = require("react-test-renderer");
 const { loadTs } = require("./load-ts.cjs");
-const { usePitchAudioRecorder } = loadTs("src/hooks/usePitchAudioRecorder.ts", {
+const { useInterviewRecorder } = loadTs("src/hooks/useInterviewRecorder.ts", {
   "@/lib/pitch-live-transcript": loadTs("src/lib/pitch-live-transcript.ts"),
 });
 
@@ -45,7 +45,7 @@ function setup(t, options = {}) {
   };
   let hook, root;
   function Harness() {
-    hook = usePitchAudioRecorder({ onComplete: text => completed.push(text), onError: () => { errors++; } });
+    hook = useInterviewRecorder({ onComplete: text => completed.push(text), onError: () => { errors++; } });
     return null;
   }
   act(() => { root = create(React.createElement(Harness)); });

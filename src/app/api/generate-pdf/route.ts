@@ -1,3 +1,5 @@
+import { safeFailure } from "@/lib/public-error";
+import { checkRequest } from "@/lib/api-guard";
 import { NextRequest } from "next/server";
 import { renderToStream, Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import { createElement } from "react";
@@ -380,6 +382,7 @@ function buildPdfDocument(cvData: CVData, results: ResultsData, generatedAt: str
 
 export async function POST(req: NextRequest) {
   try {
+    checkRequest(req, 900_000);
     const body: Body = await req.json();
     const { cvData, results, generatedAt } = body;
 
@@ -408,11 +411,7 @@ export async function POST(req: NextRequest) {
         "Content-Disposition": "attachment; filename=\"RoleMatch_" + safeName + ".pdf\"",
       },
     });
-  } catch (e: any) {
-    console.error("generate-pdf error:", e);
-    return new Response(
-      JSON.stringify({ ok: false, error: e?.message || "Failed to generate PDF" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+  } catch (error) {
+    return safeFailure(error, "Could not prepare the PDF. Please try again.");
   }
 }

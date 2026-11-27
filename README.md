@@ -8,12 +8,27 @@ Pitch Perfect is at `/pitch` in this Next.js app.
 2. Copy `.env.example` to `.env.local` and set the API keys.
 3. Run `npm run dev`.
 
+The hosted AI features in this project use one server-side OpenAI key. Both
+interviewers use `gpt-6.2-astra` with medium reasoning to choose the next question
+from the source document and the conversation. Set `OPENAI_INTERVIEW_MODEL` to
+override it. Upload extraction and career recommendations default to `gpt-6.2-sol`
+with low reasoning and use the separate `OPENAI_TEXT_MODEL` override. Both model
+settings require Responses and strict Structured Outputs. Calls use bounded
+output, no automatic retries, and `store: false`.
+
 Pitch reports use the OpenAI Responses API with `gpt-6.1-sol` by default. Set
 `OPENAI_API_KEY` in the hosting project's **Production** and **Preview** environments
 before deploying this change. Set `OPENAI_PITCH_REPORT_MODEL` to override the report
 model with a Responses/Structured Outputs model that supports low reasoning effort
 and live web search. The report key must allow the Responses API and web search.
-The other existing AI endpoints still require `ANTHROPIC_API_KEY`.
+Spoken questions use the same key with OpenAI Realtime access. The server reads
+the prepared question using `gpt-realtime-2.1-mini` (`OPENAI_VOICE_MODEL`), the
+Cedar investor or Marin career adviser voice, and British English pronunciation.
+Each utterance is bounded in input length, audio output and elapsed time.
+If playback fails, an installed English device voice can read the same text.
+If none is available, the question stays on screen and the interview continues.
+The career interview also uses the shared OpenAI live/final recorder with career
+vocabulary; users can review, edit or type answers without a browser dictation service.
 
 Pitch Perfect records each answer with `MediaRecorder`, then sends the completed
 audio to `/api/transcribe-pitch-audio` after Stop. It uses `gpt-4o-transcribe` and
@@ -30,6 +45,32 @@ connection without exposing the API key. Live text is a preview; Stop replaces
 that preview with the final recorded-audio transcript. The live connection closes
 on Stop, Clear, recording errors and navigation. If live text is unavailable,
 recording continues and the UI explains that the transcript will appear after Stop.
+
+## Production credentials
+
+Set `OPENAI_API_KEY`, `SUPABASE_SECRET_KEY` (or the legacy service-role key) and
+`RESEND_API_KEY` as **Secret** variables in the project's Vercel settings. Never
+use a `NEXT_PUBLIC_` name for a private credential. Use separate keys for Preview
+and Production. Prefer a project-scoped OpenAI key and a sending-only Resend key
+restricted to VoiceReach's verified sender domain. Non-secret settings such as
+model names, sender addresses and email enablement flags can use Config.
+
+Credential-bearing modules are server-only. The build checks public assets,
+browser bundles/maps and prerendered page payloads for credential values and
+known private-key formats. Error responses and logs omit raw provider details.
+Restrict production deploy and environment-edit rights to trusted maintainers:
+the server must still be able to use its configured credentials. To rotate,
+save the replacement in Vercel, redeploy, verify a live request, then revoke the
+old key at its provider. Moving an already shared key into Secret storage does
+not revoke it.
+
+The `protect_public_api_usage` migration adds a service-only atomic rate limiter
+for paid requests and new sessions. It stores a daily keyed network alias, not
+an IP address or credential. Public visitors cannot read or update the counters.
+Unaffiliated origins are rejected, limits apply across function instances, and
+paid requests pause if counting is unavailable. Saving answers to an existing
+session, polling an existing report, and downloading a saved PDF do not consume a
+generation allowance. Per-network limits reduce abuse but are not a billing cap.
 
 ## Saved reports
 
@@ -164,8 +205,7 @@ estimate is null. This estimate excludes the spoken interview, transcription,
 hosting, taxes and exchange-rate effects; the £1 whole-process target is not a
 guarantee for unlimited recording or repeated new generations.
 
-Pricing references: https://developers.openai.com/api/docs/pricing and
-https://elevenlabs.io/pricing/api. The existing voice models are preserved.
+Pricing reference: https://developers.openai.com/api/docs/pricing.
 
 ## Verification
 

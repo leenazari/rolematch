@@ -20,7 +20,7 @@ function browser(t){const original={sessionStorage:global.sessionStorage,localSt
  function page(sessionClient){return loadTs('src/app/pitch/conversation/page.tsx',{
   'next/navigation':{useRouter:()=>router},'@vercel/analytics':{track(){throw Error('Analytics blocked');}},
   '@/lib/pitch-session-client':sessionClient,
-  '@/hooks/usePitchAudioRecorder':{usePitchAudioRecorder:()=>({supported:false,status:'idle',liveText:'',liveStatus:'unavailable',reset(){}})},
+  '@/hooks/useInterviewRecorder':{useInterviewRecorder:()=>({supported:false,status:'idle',liveText:'',liveStatus:'unavailable',reset(){}})},
   '@/hooks/usePitchSpeechSynthesis':{usePitchSpeechSynthesis:()=>({speaking:false,stopSpeaking(){},speak(){throw Error('Final speech must not gate saving');}})},
   '@/components/VoiceOrb':()=>null}).default;}
  const state={pitchData:{companyName:'Recovery demo'},messages:[{role:'ai',text:'Give your 30-second closing pitch.',questionNumber:7}],

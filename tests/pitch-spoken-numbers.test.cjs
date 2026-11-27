@@ -36,7 +36,7 @@ test("names, versions, phone numbers and URLs are not changed", () => {
 test("both the hosted voice request and browser fallback receive spoken words", async t => {
   const globals = { window: global.window, fetch: global.fetch, SpeechSynthesisUtterance: global.SpeechSynthesisUtterance };
   let body, utterance;
-  global.window = { speechSynthesis: { cancel() {}, getVoices: () => [], speak: utter => { utterance = utter; } } };
+  global.window = { speechSynthesis: { cancel() {}, getVoices: () => [{ localService: true, lang: "en-GB" }], speak: utter => { utterance = utter; } } };
   global.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
   global.fetch = async (url, request) => { body = JSON.parse(request.body); return { ok: false }; };
   const { usePitchSpeechSynthesis } = loadTs("src/hooks/usePitchSpeechSynthesis.ts", { "@/lib/pitch-spoken-numbers": numbers });
@@ -48,4 +48,20 @@ test("both the hosted voice request and browser fallback receive spoken words", 
   const expected = "Why do you need three hundred and twenty thousand pounds at a one point four per cent transaction fee?";
   assert.equal(body.text, expected);
   assert.equal(utterance.text, expected);
+});
+
+test("if hosted audio fails, a remote browser voice is never used and the founder can continue", async t => {
+  const saved = { window: global.window, fetch: global.fetch, SpeechSynthesisUtterance: global.SpeechSynthesisUtterance };
+  let deviceCalls = 0, completions = 0;
+  global.window = { speechSynthesis: { getVoices: () => [{ localService: false, lang: "en-GB" }], speak: () => deviceCalls++ } };
+  global.SpeechSynthesisUtterance = class {};
+  global.fetch = async () => ({ ok: false });
+  const { usePitchSpeechSynthesis } = loadTs("src/hooks/usePitchSpeechSynthesis.ts");
+  let hook, root;
+  function Harness() { hook = usePitchSpeechSynthesis(); return null; }
+  act(() => { root = create(React.createElement(Harness)); });
+  t.after(() => { act(() => root.unmount()); Object.assign(global, saved); });
+  await act(async () => hook.speak("How much are you raising?", () => completions++));
+  assert.equal(deviceCalls, 0);
+  assert.equal(completions, 1);
 });

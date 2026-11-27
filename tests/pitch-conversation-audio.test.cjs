@@ -38,7 +38,7 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
   };
   const router = { push() {} };
   let liveOptions;
-  const recorderHook = loadTs("src/hooks/usePitchAudioRecorder.ts", {
+  const recorderHook = loadTs("src/hooks/useInterviewRecorder.ts", {
     "@/lib/pitch-live-transcript": { connectPitchLiveTranscript: (stream, options) => {
       liveOptions = options;
       options.onStatus("live");
@@ -48,7 +48,7 @@ test("record, Stop, Add more, edit and Send pass one clean founder answer to the
   const { default: Page } = loadTs("src/app/pitch/conversation/page.tsx", {
     "next/navigation": { useRouter: () => router },
     "@vercel/analytics": { track() {} },
-    "@/hooks/usePitchAudioRecorder": recorderHook,
+    "@/hooks/useInterviewRecorder": recorderHook,
     "@/hooks/usePitchSpeechSynthesis": { usePitchSpeechSynthesis: () => ({
       speak: (text, done) => done(), speaking: false, stopSpeaking() {},
     }) },
@@ -94,9 +94,9 @@ test("the screen waits for a reviewed closing answer and includes it in the stor
   const originals = { sessionStorage: global.sessionStorage, fetch: global.fetch };
   global.sessionStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) };
   const { POST } = loadTs("src/app/api/pitch-next-question/route.ts", {
-    "@/lib/anthropic": { HAIKU: "test", anthropic: { messages: { create: async () => ({
-      content: [{ type: "text", text: JSON.stringify({ text: "The next topic?", moveOn: true, finished: false }) }],
-    }) } } },
+    "@/lib/openai-json": { generateJson: async () => ({
+      text: "The next topic?", moveOn: true, finished: false, thinAnswer: false,
+    }) },
   });
   global.fetch = (url, request) => url === "/api/pitch-session"
     ? Promise.resolve({ ok: true, json: async () => ({ ok: true, session: JSON.parse(request.body).state ? { state: JSON.parse(request.body).state } : null }) })
@@ -105,7 +105,7 @@ test("the screen waits for a reviewed closing answer and includes it in the stor
   const router = { push: url => destinations.push(url) };
   const { default: Page } = loadTs("src/app/pitch/conversation/page.tsx", {
     "next/navigation": { useRouter: () => router }, "@vercel/analytics": { track() {} },
-    "@/hooks/usePitchAudioRecorder": { usePitchAudioRecorder: () => ({ supported: false, status: "idle",
+    "@/hooks/useInterviewRecorder": { useInterviewRecorder: () => ({ supported: false, status: "idle",
       liveText: "", liveStatus: "unavailable", reset() {} }) },
     "@/hooks/usePitchSpeechSynthesis": { usePitchSpeechSynthesis: () => ({
       speak: (text, done) => { spoken.push(text); done(); }, speaking: false, stopSpeaking() {},

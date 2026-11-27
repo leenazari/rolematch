@@ -1,3 +1,5 @@
+import { safeFailure } from "@/lib/public-error";
+import { checkRequest } from "@/lib/api-guard";
 import { NextRequest } from "next/server";
 import { downloadSavedPitchPdf, validReportAccess } from "@/lib/pitch-report-job";
 import { renderPitchPdf } from "@/lib/pitch-pdf";
@@ -8,6 +10,7 @@ type Body = { pitchData?: PitchData; critique?: PitchCritique; generatedAt?: str
 
 export async function POST(req: NextRequest) {
   try {
+    checkRequest(req, 1_100_000);
     const body: Body = await req.json();
     const { pitchData, critique, generatedAt, reportId, accessToken } = body;
     if (reportId || accessToken) {
@@ -36,11 +39,7 @@ export async function POST(req: NextRequest) {
         "Content-Disposition": "attachment; filename=\"PitchPerfect_" + safeName + ".pdf\"",
       },
     });
-  } catch (e: any) {
-    console.error("generate-pitch-pdf error:", e);
-    return new Response(
-      JSON.stringify({ ok: false, error: e?.message || "Failed to generate PDF" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+  } catch (error) {
+    return safeFailure(error, "Could not prepare the PDF. Please try again.");
   }
 }

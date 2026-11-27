@@ -1,3 +1,5 @@
+import { PublicError } from "@/lib/public-error";
+import "server-only";
 import OpenAI from "openai";
 import type { PitchCritique } from "@/types";
 
@@ -104,13 +106,13 @@ export function isPitchCritique(value: unknown): value is PitchCritique {
 
 function client(timeout: number) {
   if (!process.env.OPENAI_API_KEY) {
-    throw new Error("Pitch reports are not configured. Please contact support.");
+    throw new PublicError("Pitch reports are not configured. Please contact support.");
   }
   return new OpenAI({ timeout, maxRetries: 0 });
 }
 
 function parameters(instructions: string, input: string, model = process.env.OPENAI_PITCH_REPORT_MODEL || "gpt-6.1-sol", part: ReportPart = "full", opening?: Partial<PitchCritique>) {
-  if (input.length > MAX_REPORT_INPUT_CHARS) throw new Error("This pitch is too long to process within the report budget. Please shorten the written answers.");
+  if (input.length > MAX_REPORT_INPUT_CHARS) throw new PublicError("This pitch is too long to process within the report budget. Please shorten the written answers.");
   let schema = objectSchema(properties);
   const feedback = part === "core" || part === "opening" || part === "detail";
   if (feedback) {
@@ -167,7 +169,7 @@ export async function beginPitchReport(instructions: string, input: string, mode
       if (event.type === "response.created") return { ...event.response, streaming: true,
         streamCursor: event.sequence_number, iterator, controller: stream.controller };
     }
-    throw new Error("The report did not start. Please try again.");
+    throw new PublicError("The report did not start. Please try again.");
   } catch (error) {
     stream.controller.abort();
     throw error;
@@ -186,7 +188,7 @@ export async function consumePitchReportStream(started: Awaited<ReturnType<typeo
       if (event.sequence_number <= cursor) continue;
       cursor = event.sequence_number;
       if (event.type === "response.output_text.delta") text += event.delta;
-      if (text.length > 200_000) throw new Error("Report output exceeds the supported size.");
+      if (text.length > 200_000) throw new PublicError("Report output exceeds the supported size.");
       // Save frequently enough for two-second UI polling without writing every token.
       if (Date.now() - lastSaved >= 1_000 || ["response.completed", "response.failed", "response.incomplete"].includes(event.type)) {
         await save({ cursor, text });
@@ -213,12 +215,12 @@ export async function readPitchReportStream(responseId: string, cursor: number, 
         if (event.sequence_number <= cursor) continue;
         cursor = event.sequence_number;
         if (event.type === "response.output_text.delta") text += event.delta;
-        if (text.length > 200_000) throw new Error("Report output exceeds the supported size.");
+        if (text.length > 200_000) throw new PublicError("Report output exceeds the supported size.");
         if (["response.completed", "response.failed", "response.incomplete"].includes(event.type)) break;
       }
     } finally { stream.controller.abort(); }
   } catch (error) {
-    if (!controller.signal.aborted) throw new Error("Your feedback is still preparing. Please try again to resume it.");
+    if (!controller.signal.aborted) throw new PublicError("Your feedback is still preparing. Please try again to resume it.");
   } finally { clearTimeout(timer); }
   return { cursor, text };
 }
@@ -277,7 +279,7 @@ function verifyResearch(report: any, output: any[]) {
 
 export function parsePitchReport(response: { status?: string; output_text?: string; output?: any[] }): PitchCritique {
   if (response.status !== "completed" || !response.output_text) {
-    throw new Error("The report could not be completed. Please try generating it again.");
+    throw new PublicError("The report could not be completed. Please try generating it again.");
   }
   const parsed = JSON.parse(response.output_text);
   const report: unknown = parsed.first && parsed.second ? Object.fromEntries([
@@ -286,28 +288,28 @@ export function parsePitchReport(response: { status?: string; output_text?: stri
   ]) : parsed;
   verifyResearch(report, response.output || []);
   if (!isPitchCritique(report)) {
-    throw new Error("The report format was invalid. Please try generating it again.");
+    throw new PublicError("The report format was invalid. Please try generating it again.");
   }
   return scrubPitchReport(report);
 }
 
 export function parsePitchMarketReport(response: { status?: string; output_text?: string; output?: any[] }): NonNullable<PitchCritique["marketResearch"]> {
-  if (response.status !== "completed" || !response.output_text) throw new Error("Market research could not be completed. Please retry it.");
+  if (response.status !== "completed" || !response.output_text) throw new PublicError("Market research could not be completed. Please retry it.");
   const report = JSON.parse(response.output_text);
   verifyResearch(report, response.output || []);
   if (!report.marketResearch || !isPitchCritique({ verdict: "", verdictCategory: "almost", strong: [], weak: [],
     fatalFlaw: null, sectorConcerns: [], revisedPitch: "", thirtyDayActions: [], vcQuestions: [], glossary: [], ...report })) {
-    throw new Error("The market research format was invalid. Please retry it.");
+    throw new PublicError("The market research format was invalid. Please retry it.");
   }
   return scrubPitchReport(report.marketResearch);
 }
 
 export function parsePitchOpening(response: { status?: string; output_text?: string }): Partial<PitchCritique> {
-  if (response.status !== "completed" || !response.output_text) throw new Error("The opening feedback could not be completed. Please retry it.");
+  if (response.status !== "completed" || !response.output_text) throw new PublicError("The opening feedback could not be completed. Please retry it.");
   const first = JSON.parse(response.output_text).first;
   if (!first || !PITCH_OPENING_KEYS.every(key => Object.hasOwn(first, key)) || !isPitchCritique({ weak: [], fatalFlaw: null,
     sectorConcerns: [], revisedPitch: "", thirtyDayActions: [], vcQuestions: [], glossary: [], ...first })) {
-    throw new Error("The opening feedback format was invalid. Please retry it.");
+    throw new PublicError("The opening feedback format was invalid. Please retry it.");
   }
   return scrubPitchReport(Object.fromEntries(PITCH_OPENING_KEYS.map(key => [key, first[key]])));
 }

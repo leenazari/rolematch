@@ -1,3 +1,5 @@
+import { checkUsage } from "@/lib/api-guard";
+import { safeFailure } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI, { toFile } from "openai";
 
@@ -35,12 +37,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Voice transcription is unavailable. Please type your answer." }, { status: 503 });
     }
     const companyName = String(form.get("companyName") || "").slice(0, 150);
+    await checkUsage(request, "audio");
     const openai = new OpenAI({ timeout: 45_000, maxRetries: 0 });
     const result = await openai.audio.transcriptions.create({
       file: await toFile(Buffer.from(await audio.arrayBuffer()), "answer." + extension, { type: mime }),
       model: process.env.OPENAI_PITCH_TRANSCRIPTION_MODEL || "gpt-4o-transcribe",
       language: "en",
-      prompt: "An investor pitch in British English. Business vocabulary: revenue, EPOS, SaaS, payments." +
+      prompt: form.get("kind") === "career" ? "A UK career interview about work experience, qualifications and preferred roles." :
+        "An investor pitch in British English. Business vocabulary: revenue, EPOS, SaaS, payments." +
         (companyName ? " Company name: " + companyName + "." : ""),
     });
     const text = result.text.trim();
@@ -48,9 +52,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "No speech was detected. Record again or type your answer." }, { status: 422 });
     }
     return NextResponse.json({ ok: true, text });
-  } catch (cause) {
-    const error = cause as { status?: number; code?: string; name?: string };
-    console.error("pitch-audio transcription failed", { status: error.status, code: error.code, name: error.name });
-    return NextResponse.json({ ok: false, error: "Could not transcribe your answer. Retry the recording or type your answer." }, { status: 502 });
+  } catch (error) {
+    return safeFailure(error, "Could not transcribe your answer. Retry the recording or type your answer.", 502);
   }
 }

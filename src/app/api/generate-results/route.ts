@@ -1,5 +1,7 @@
+import { checkRequest, checkUsage } from "@/lib/api-guard";
+import { safeFailure } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, HAIKU } from "@/lib/anthropic";
+import { generateJson } from "@/lib/openai-json";
 import type { CVData, Message } from "@/types";
 
 export const runtime = "nodejs";
@@ -72,6 +74,7 @@ REQUIREMENTS
 
 export async function POST(req: NextRequest) {
   try {
+    checkRequest(req, 900_000);
     const body: Body = await req.json();
     const { cvData, conversation } = body;
 
@@ -113,29 +116,11 @@ export async function POST(req: NextRequest) {
       conversationLog +
       "\n\nNow generate their 5 role recommendations as JSON. Remember: 3 recommended first, then 2 consider. Sort each group by matchScore descending. Reference specific things they said. UK salaries. British English. JSON only.";
 
-    const msg = await anthropic.messages.create({
-      model: HAIKU,
-      max_tokens: 5000,
-      system: RESULTS_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    });
-
-    const textBlock = msg.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from AI");
-    }
-
-    let cleaned = textBlock.text.trim();
-    cleaned = cleaned.replace(/```json|```/g, "").trim();
-
-    const data = JSON.parse(cleaned);
+    await checkUsage(req, "report");
+    const data = await generateJson("career_results", RESULTS_PROMPT, userPrompt);
 
     return NextResponse.json({ ok: true, data });
-  } catch (e: any) {
-    console.error("generate-results error:", e);
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Failed to generate results" },
-      { status: 500 }
-    );
+  } catch (error) {
+    return safeFailure(error, "Could not prepare your recommendations. Please try again.");
   }
 }

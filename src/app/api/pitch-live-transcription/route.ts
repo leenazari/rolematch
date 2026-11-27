@@ -1,3 +1,5 @@
+import { checkUsage } from "@/lib/api-guard";
+import { safeFailure } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -30,12 +32,14 @@ export async function POST(request: NextRequest) {
             model: "gpt-live-transcribe",
             languages: ["en"],
             delay: "low",
-            prompt: "An investor pitch in British English." + (companyName ? " Company: " + companyName + "." : ""),
+            prompt: body.kind === "career" ? "A UK career interview about work experience, qualifications and preferred roles." :
+              "An investor pitch in British English." + (companyName ? " Company: " + companyName + "." : ""),
           },
           turn_detection: null,
         },
       },
     }));
+    await checkUsage(request, "audio");
     const response = await fetch("https://api.openai.com/v1/realtime/calls", {
       method: "POST",
       headers: { Authorization: "Bearer " + process.env.OPENAI_API_KEY },
@@ -49,8 +53,7 @@ export async function POST(request: NextRequest) {
     const sdp = await response.text();
     if (!sdp.startsWith("v=0")) throw new Error("Invalid session answer");
     return NextResponse.json({ ok: true, sdp }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
-    console.error("pitch-live connection unavailable");
-    return NextResponse.json({ ok: false }, { status: 502 });
+  } catch (error) {
+    return safeFailure(error, "Live transcription is unavailable.", 502);
   }
 }
