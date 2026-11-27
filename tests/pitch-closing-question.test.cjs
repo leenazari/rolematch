@@ -81,3 +81,18 @@ test("closing cannot finish without the question and a non-empty answer", async 
   }
   assert.equal(s.requests.length, 0);
 });
+
+test("an evidence question about a trial period is preserved, while a delivery promise becomes a question", async () => {
+  const text = "What changed for the paying sites after 6 weeks?";
+  assert.equal((await setup({ text, moveOn: false }).ask(3)).text, text);
+  const promised = await setup({ text: "I'll email you the report in 2 days.", moveOn: false }).ask(3);
+  assert.match(promised.text, /\?$/);
+  assert.doesNotMatch(promised.text, /email|report/i);
+});
+
+test("after two follow-ups a reluctant interviewer still asks the next core topic", async () => {
+  const reply = await setup({ text: "One more about what you built?", moveOn: false }).ask(3, 2);
+  assert.equal(reply.questionNumber, 4);
+  assert.equal(reply.followUpsThisQuestion, 0);
+  assert.match(reply.text, /customers could you realistically reach/);
+});

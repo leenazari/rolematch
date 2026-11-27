@@ -59,6 +59,30 @@ test("the five migrated routes send the correct context to OpenAI and retain the
   }
 });
 
+test("both interviewers use a separate reasoning model even when a lightweight upload model is configured", async t => {
+  useKey(t);
+  const before = { text: process.env.OPENAI_TEXT_MODEL, interview: process.env.OPENAI_INTERVIEW_MODEL };
+  t.after(() => {
+    if (before.text === undefined) delete process.env.OPENAI_TEXT_MODEL; else process.env.OPENAI_TEXT_MODEL = before.text;
+    if (before.interview === undefined) delete process.env.OPENAI_INTERVIEW_MODEL; else process.env.OPENAI_INTERVIEW_MODEL = before.interview;
+  });
+  delete process.env.OPENAI_INTERVIEW_MODEL;
+  process.env.OPENAI_TEXT_MODEL = "gpt-6-luna";
+  const calls = [];
+  class OpenAI { responses = { create: async request => {
+    calls.push(request);
+    return { status: "completed", output_text: JSON.stringify(turn) };
+  } }; }
+  const { generateJson } = loadTs("src/lib/openai-json.ts", { openai: OpenAI });
+  for (const task of ["pitch_question", "career_question", "pitch_extract"]) await generateJson(task, "system", "conversation");
+  process.env.OPENAI_INTERVIEW_MODEL = "interview-override";
+  await generateJson("pitch_question", "system", "conversation");
+  assert.deepEqual(calls.map(c => [c.model, c.reasoning.effort]), [
+    ["gpt-6.2-astra", "medium"], ["gpt-6.2-astra", "medium"], ["gpt-6-luna", "low"], ["interview-override", "medium"],
+  ]);
+  assert.ok(calls[0].max_output_tokens >= 2048);
+});
+
 test("missing key and incomplete or refused text results never become a successful report", async t => {
   useKey(t);
   let response = { status: "incomplete", output_text: '{"summary":"partial"}' };

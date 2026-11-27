@@ -8,11 +8,13 @@ Pitch Perfect is at `/pitch` in this Next.js app.
 2. Copy `.env.example` to `.env.local` and set the API keys.
 3. Run `npm run dev`.
 
-The hosted AI features in this project use one server-side OpenAI key. Upload
-extraction, both interviewers and career recommendations use strict Structured
-Outputs with `gpt-6-luna` (override with `OPENAI_TEXT_MODEL`, which must support
-Responses, Structured Outputs and reasoning effort `none`). These short calls use
-fixed output limits, no automatic retries, and `store: false`.
+The hosted AI features in this project use one server-side OpenAI key. Both
+interviewers use `gpt-6.2-astra` with medium reasoning to choose the next question
+from the source document and the conversation. Set `OPENAI_INTERVIEW_MODEL` to
+override it. Upload extraction and career recommendations default to `gpt-6.2-sol`
+with low reasoning and use the separate `OPENAI_TEXT_MODEL` override. Both model
+settings require Responses and strict Structured Outputs. Calls use bounded
+output, no automatic retries, and `store: false`.
 
 Pitch reports use the OpenAI Responses API with `gpt-6.1-sol` by default. Set
 `OPENAI_API_KEY` in the hosting project's **Production** and **Preview** environments

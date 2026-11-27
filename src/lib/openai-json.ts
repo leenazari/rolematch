@@ -26,17 +26,17 @@ const role = {
   salary: object({ entry: str, established: str, senior: str, startingTier: choice("entry", "established", "senior") }),
 };
 const tasks = {
-  pitch_extract: { tokens: 1024, schema: object({
+  pitch_extract: { tokens: 2048, schema: object({
     companyName: str, oneLineDescription: str, problem: str, targetCustomer: str, sector: str,
     stage: choice("idea", "pre-revenue", "early revenue", "revenue", "scaling"),
     teamSize: str, founderBackground: str, traction: str, ask: str,
   }) },
-  cv_extract: { tokens: 1024, schema: object({
+  cv_extract: { tokens: 2048, schema: object({
     name: str, currentRole: str, sector: str, yearsExperience: { type: "number" },
     keySkills: strings, education: str, notableEmployers: strings,
   }) },
-  pitch_question: { tokens: 500, schema: object(turn) },
-  career_question: { tokens: 500, schema: object({ ...turn, isGoldenThreadProbe: bool }) },
+  pitch_question: { tokens: 4096, schema: object(turn) },
+  career_question: { tokens: 4096, schema: object({ ...turn, isGoldenThreadProbe: bool }) },
   career_results: { tokens: 5000, schema: object({ summary: str,
     roles: { type: "array", minItems: 5, maxItems: 5, items: { anyOf: [
       object({ category: choice("recommended"), ...role }),
@@ -49,12 +49,16 @@ const tasks = {
 export async function generateJson<K extends keyof Results>(task: K, instructions: string, input: string): Promise<Results[K]> {
   if (input.length > 120_000) throw new PublicError("This input is too long. Please shorten it and try again.", 413);
   if (!process.env.OPENAI_API_KEY) throw new Error("The AI service is not configured.");
-  const client = new OpenAI({ timeout: task === "career_results" ? 52_000 : 24_000, maxRetries: 0 });
+  const interview = task === "pitch_question" || task === "career_question";
+  const model = interview
+    ? process.env.OPENAI_INTERVIEW_MODEL || "gpt-6.2-astra"
+    : process.env.OPENAI_TEXT_MODEL || "gpt-6.2-sol";
+  const client = new OpenAI({ timeout: interview || task === "career_results" ? 52_000 : 24_000, maxRetries: 0 });
   const { tokens, schema } = tasks[task];
   try {
     const result = await client.responses.create({
-      model: process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
-      instructions, input, store: false, reasoning: { effort: "none" },
+      model,
+      instructions, input, store: false, reasoning: { effort: interview ? "medium" : "low" },
       max_output_tokens: tokens, text: { format: { type: "json_schema", name: task, schema, strict: true } },
     });
     if (result.status !== "completed" || !result.output_text?.trim()) throw new Error("Incomplete response");

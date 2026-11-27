@@ -5,7 +5,7 @@ import { generateJson } from "@/lib/openai-json";
 import type { CVData, Message } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 type Body = {
   cvData: CVData;
