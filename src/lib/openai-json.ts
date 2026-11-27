@@ -58,11 +58,14 @@ export async function generateJson<K extends keyof Results>(task: K, instruction
   try {
     const result = await client.responses.create({
       model,
-      instructions, input, store: false, reasoning: { effort: interview ? "medium" : "low" },
+      ...(task === "pitch_question" ? { input: [{ role: "developer" as const, content: instructions }, { role: "user" as const, content: input }] } : { instructions, input }),
+      store: false, reasoning: { effort: interview ? "medium" : "low" },
       max_output_tokens: tokens, text: { format: { type: "json_schema", name: task, schema, strict: true } },
     });
     if (result.status !== "completed" || !result.output_text?.trim()) throw new Error("Incomplete response");
-    return JSON.parse(result.output_text) as Results[K];
+    const parsed = JSON.parse(result.output_text) as Results[K];
+    if (task === "pitch_question") console.info("Pitch investor turn", { model: result.model, input: result.usage?.input_tokens, cached: result.usage?.input_tokens_details?.cached_tokens, output: result.usage?.output_tokens });
+    return parsed;
   } catch (cause) {
     // Never forward a provider response, submitted CV/pitch, or credential to the browser or logs.
     const failure = cause as { status?: number };

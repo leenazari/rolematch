@@ -1,3 +1,4 @@
+import { readPdfText } from "@/lib/pdf-text";
 import { checkRequest, checkUsage } from "@/lib/api-guard";
 import { PublicError, safeFailure } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
@@ -66,39 +67,6 @@ async function extractFromText(rawText: string) {
   };
 }
 
-async function tryParsePdf(buffer: Buffer): Promise<string> {
-  try {
-    const pdfParse = (await import("pdf-parse")).default;
-    const parsed = await pdfParse(buffer, { max: 10 });
-    return parsed.text || "";
-  } catch (e: any) {
-    const errorMsg = e?.message || "";
-    const isImageError =
-      errorMsg.includes("image") ||
-      errorMsg.includes("XObject") ||
-      errorMsg.includes("JPEG") ||
-      errorMsg.includes("JBIG2") ||
-      errorMsg.includes("CCITTFax") ||
-      errorMsg.includes("colour") ||
-      errorMsg.includes("color");
-
-    if (isImageError) {
-      try {
-        const pdfParse = (await import("pdf-parse")).default;
-        const parsed = await pdfParse(buffer, {
-          max: 10,
-          pagerender: function () { return Promise.resolve(""); },
-        });
-        return parsed.text || "";
-      } catch (e2) {
-        throw new PublicError("Could not extract text from this PDF. It may be image-based or designed in a tool like Canva. Please paste the text directly.", 400);
-      }
-    }
-
-    throw new PublicError("Could not read this PDF. Please try a different file or paste the text directly.", 400);
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     checkRequest(req, 4_500_000);
@@ -115,10 +83,10 @@ export async function POST(req: NextRequest) {
       if (!file) {
         return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
       }
-      const buffer = Buffer.from(await file.arrayBuffer());
+      if (file.size > 4_500_000) throw new PublicError("This document is too large.", 413);
 
       try {
-        rawText = await tryParsePdf(buffer);
+        rawText = await readPdfText(file, 10);
       } catch (e: any) {
         return safeFailure(e, "Could not read this PDF. Please paste the text directly.", 400);
       }
