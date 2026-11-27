@@ -1,5 +1,6 @@
 "use client";
 
+import { beginPitchSession, checkpointPitch, recoverPitchSession } from "@/lib/pitch-session-client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import PitchUpload from "@/components/PitchUpload";
@@ -81,8 +82,10 @@ export default function PitchPage() {
   const [stage, setStage] = useState<Stage>("welcome");
   const [pitchData, setPitchData] = useState<PitchData | null>(null);
   const [testMode, setTestMode] = useState(false);
+  const [resume, setResume] = useState<{ company: string; finished: boolean } | null>(null);
 
   useEffect(function () {
+    recoverPitchSession().then(saved => { if (saved) setResume({ company: saved.state.pitchData.companyName, finished: saved.state.finished }); });
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("test") === "true") {
@@ -95,15 +98,9 @@ export default function PitchPage() {
     const data = preset === "tilly" ? TEST_PITCH_TILLY : TEST_PITCH_WEAK;
     const conversation = preset === "tilly" ? TEST_CONVERSATION_TILLY : TEST_CONVERSATION_WEAK;
 
-    sessionStorage.setItem("pitchperfect_data", JSON.stringify(data));
-    sessionStorage.setItem("pitchperfect_conversation", JSON.stringify(conversation));
-    sessionStorage.setItem("pitchperfect_started_at", new Date().toISOString());
-    sessionStorage.setItem("pitchperfect_finished_at", new Date().toISOString());
-    sessionStorage.removeItem("pitchperfect_critique");
-    sessionStorage.removeItem("pitchperfect_generated_at");
-    sessionStorage.removeItem("pitchperfect_report_access");
-    sessionStorage.removeItem("pitchperfect_insights_access");
-    sessionStorage.removeItem("pitchperfect_pdf_saved");
+    const session = beginPitchSession(data);
+    checkpointPitch({ ...session.state, messages: conversation, currentQuestion: 7, hasStarted: true, finished: true,
+      revision: 1, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() }, session.access);
 
     router.push("/pitch/results");
   }
@@ -129,6 +126,14 @@ export default function PitchPage() {
             </>
           )}
         </div>
+
+        {stage === "welcome" && resume ? <section className="max-w-2xl mx-auto mb-8 rounded-2xl border border-purple-200 bg-purple-50 p-6">
+          <h2 className="font-semibold text-slate-900">Your saved pitch for {resume.company}</h2>
+          <p className="text-sm text-slate-600 mt-2 mb-4">Pick up where you left off. Your answers are saved.</p>
+          <button className="rounded-xl bg-purple-600 px-5 py-3 text-white font-medium" onClick={() => router.push(resume.finished ? "/pitch/results" : "/pitch/conversation")}>
+            {resume.finished ? "View saved results" : "Resume my pitch"}
+          </button>
+        </section> : null}
 
         {testMode && stage === "welcome" && (
           <div className="bg-amber-50/80 backdrop-blur border-2 border-amber-300 rounded-2xl p-6 mb-8 max-w-2xl mx-auto">
@@ -168,11 +173,7 @@ export default function PitchPage() {
           <PitchConfirm
             data={pitchData}
             onConfirm={(finalData) => {
-              for (const key of ["pitchperfect_conversation", "pitchperfect_critique", "pitchperfect_generated_at",
-                "pitchperfect_report_access", "pitchperfect_insights_access", "pitchperfect_pdf_saved", "pitchperfect_started_at", "pitchperfect_finished_at"]) {
-                sessionStorage.removeItem(key);
-              }
-              sessionStorage.setItem("pitchperfect_data", JSON.stringify(finalData));
+              beginPitchSession(finalData);
               router.push("/pitch/conversation");
             }}
             onBack={() => {

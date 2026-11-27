@@ -3,10 +3,14 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { track } from "@vercel/analytics";
+import { pitchStore } from "@/lib/pitch-browser-store";
+import { beginPitchSession, checkpointPitch, savedPitchSession, recoverPitchSession, persistPitchSession } from "@/lib/pitch-session-client";
+import { PITCH_SIGN_OFF, validPitchEmail, type PitchSessionState } from "@/lib/pitch-session-state";
 import { usePitchAudioRecorder } from "@/hooks/usePitchAudioRecorder";
 import { usePitchSpeechSynthesis } from "@/hooks/usePitchSpeechSynthesis";
 import VoiceOrb from "@/components/VoiceOrb";
 import type { PitchData, PitchMessage } from "@/types";
+function safeTrack(name: string, data?: Record<string, string>) { try { track(name, data); } catch {} }
 
 type Phase = "idle" | "ai_speaking" | "starting" | "listening" | "finalising" | "reviewing" | "thinking";
 
@@ -22,9 +26,20 @@ export default function PitchConversationPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [draftAnswer, setDraftAnswer] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [introPlaying, setIntroPlaying] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const sessionRef = useRef<ReturnType<typeof savedPitchSession>>(null);
+  const savedRevisionRef = useRef(-1);
+  const busyRef = useRef(false);
+  const introEndedRef = useRef(false);
+  const aliveRef = useRef(true);
+  const navigatedRef = useRef(false);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingBaseRef = useRef("");
+  const [saveStatus, setSaveStatus] = useState("");
+  const [turnError, setTurnError] = useState("");
   const trackedQuestionsRef = useRef<Set<number>>(new Set());
 
   const {
@@ -32,7 +47,9 @@ export default function PitchConversationPage() {
     liveText, liveStatus, start, stop, retry, reset: hardReset,
   } = usePitchAudioRecorder({
     onComplete(text) {
-      setDraftAnswer(prev => (prev ? prev + " " + text : text).trim());
+      const answer = [recordingBaseRef.current, text].filter(Boolean).join(" ").trim();
+      setDraftAnswer(answer);
+      saveDraft(answer);
       setPhase("reviewing");
     },
     onError() { setPhase("reviewing"); },
@@ -43,18 +60,64 @@ export default function PitchConversationPage() {
     if (recordingStatus === "transcribing") setPhase("finalising");
   }, [recordingStatus]);
 
-  useEffect(function () {
-    const stored = sessionStorage.getItem("pitchperfect_data");
-    if (!stored) {
-      router.push("/pitch");
-      return;
+  useEffect(() => {
+    aliveRef.current = true;
+    let active = true;
+    function restore(saved: NonNullable<ReturnType<typeof savedPitchSession>>) {
+      if (!active) return;
+      sessionRef.current = saved;
+      const state = saved.state;
+      setPitchData(state.pitchData); setMessages(state.messages); setCurrentQuestion(state.currentQuestion);
+      setFollowUpsThisQuestion(state.followUpsThisQuestion); setDraftAnswer(state.draftAnswer);
+      setHasStarted(state.hasStarted); setFinished(state.finished); setIntroPlaying(false);
+      setRecipientEmail(state.recipientEmail || "");
+      setPhase(state.draftAnswer ? "reviewing" : "idle");
+      if (state.pendingQuestion) setTurnError("Your last answer is saved. Continue your pitch to get the next question.");
+      if (state.finished && !navigatedRef.current) { navigatedRef.current = true; router.push("/pitch/results"); }
     }
-    try {
-      setPitchData(JSON.parse(stored));
-    } catch (e) {
-      router.push("/pitch");
+    const local = savedPitchSession();
+    if (local) restore(local);
+    else {
+      try {
+        const raw = pitchStore.getItem("pitchperfect_data");
+        if (raw) restore(beginPitchSession(JSON.parse(raw)));
+      } catch { setTurnError("Your pitch could not be opened. Retry loading your saved session."); }
     }
+    recoverPitchSession().then(saved => {
+      if (saved && (!sessionRef.current || saved.state.finished || saved.state.revision >= sessionRef.current.state.revision)) restore(saved);
+      else if (!saved && !sessionRef.current) setTurnError("No saved pitch was found on this device.");
+    });
+    return () => { active = false; aliveRef.current = false; if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
   }, [router]);
+
+  useEffect(() => {
+    if (liveText && (phase === "listening" || phase === "finalising")) {
+      saveDraft([recordingBaseRef.current, liveText].filter(Boolean).join(" "));
+    }
+  }, [liveText, phase]);
+
+  function checkpoint(patch: Partial<PitchSessionState>) {
+    if (!sessionRef.current) throw new Error("Your saved session is not ready yet. Please retry.");
+    const next = checkpointPitch({ ...sessionRef.current.state, ...patch, revision: sessionRef.current.state.revision + 1 }, sessionRef.current.access);
+    sessionRef.current = next;
+    return next;
+  }
+  async function ensureSaved(snapshot = sessionRef.current) {
+    if (!snapshot) throw new Error("Your saved session is not ready yet.");
+    if (savedRevisionRef.current >= snapshot.state.revision) return;
+    setSaveStatus("Saving your pitch...");
+    try {
+      await persistPitchSession(snapshot);
+      savedRevisionRef.current = Math.max(savedRevisionRef.current, snapshot.state.revision);
+      setSaveStatus((sessionRef.current?.state.revision || 0) <= savedRevisionRef.current ? "Saved online" : "Saving your pitch...");
+    } catch (error) { setSaveStatus("Saved on this device. Online saving needs a retry."); throw error; }
+  }
+  function saveDraft(answer: string) {
+    if (!sessionRef.current || sessionRef.current.state.finished) return;
+    checkpoint({ draftAnswer: answer });
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => { ensureSaved().catch(() => {}); }, 800);
+  }
 
   useEffect(function () {
     if (speaking) {
@@ -68,129 +131,113 @@ export default function PitchConversationPage() {
     const milestones = [1, 3, 5];
     if (milestones.includes(currentQuestion) && !trackedQuestionsRef.current.has(currentQuestion)) {
       trackedQuestionsRef.current.add(currentQuestion);
-      track("conversation_q" + currentQuestion + "_reached");
+      safeTrack("conversation_q" + currentQuestion + "_reached");
     }
   }, [currentQuestion, hasStarted, introPlaying]);
 
   async function startConversation() {
-    if (!pitchData) return;
-    if (!sessionStorage.getItem("pitchperfect_started_at")) {
-      sessionStorage.setItem("pitchperfect_started_at", new Date().toISOString());
-    }
-    setHasStarted(true);
-    setIntroPlaying(true);
-    setPhase("ai_speaking");
-  }
-
-  function handleIntroEnd() {
-    setIntroPlaying(false);
-    fetchNextQuestion([], 1, 0);
-  }
-
-  function handleSkipIntro() {
-    if (videoRef.current) {
-      try { videoRef.current.pause(); } catch (e) {}
-    }
-    handleIntroEnd();
-  }
-
-  async function fetchNextQuestion(
-    history: PitchMessage[],
-    questionNum: number,
-    followUps: number
-  ) {
-    setPhase("thinking");
+    if (!pitchData || busyRef.current) return;
+    busyRef.current = true; setTurnError("");
     try {
-      const res = await fetch("/api/pitch-next-question", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pitchData,
-          history,
-          currentQuestion: questionNum,
-          followUpsThisQuestion: followUps,
-        }),
-      });
+      if (recipientEmail.trim() && !validPitchEmail(recipientEmail.trim())) throw new Error("Enter a valid email address, or leave the optional email box blank.");
+      await ensureSaved(checkpoint({ hasStarted: true, startedAt: sessionRef.current?.state.startedAt || new Date().toISOString(), pendingQuestion: true }));
+      setHasStarted(true); setIntroPlaying(true); setPhase("ai_speaking");
+      introEndedRef.current = false;
+    } catch (error) { setTurnError((error as Error).message); }
+    finally { busyRef.current = false; }
+  }
+  function handleIntroEnd() { if (introEndedRef.current) return; introEndedRef.current = true; setIntroPlaying(false); fetchNextQuestion([], 1, 0); }
+  function handleSkipIntro() { try { videoRef.current?.pause(); } catch {} handleIntroEnd(); }
+
+  async function completeConversation(history: PitchMessage[]) {
+    stopSpeaking();
+    const finalHistory = history.at(-1)?.role === "ai" ? history : [...history,
+      { role: "ai" as const, text: PITCH_SIGN_OFF, questionNumber: 7 }];
+    setMessages(finalHistory); setFinished(true); setPhase("thinking");
+    const saved = checkpoint({ messages: finalHistory, currentQuestion: 7, draftAnswer: "", finished: true,
+      pendingQuestion: false, finishedAt: sessionRef.current?.state.finishedAt || new Date().toISOString() });
+    await ensureSaved(saved);
+    if (!aliveRef.current) return;
+    safeTrack("conversation_completed");
+    // Saving and navigation never depend on the final voice playback callback.
+    if (!navigatedRef.current) { navigatedRef.current = true; router.push("/pitch/results"); }
+  }
+  async function fetchNextQuestion(history: PitchMessage[], questionNum: number, followUps: number) {
+    setPhase("thinking"); setTurnError("");
+    try {
+      await ensureSaved();
+      const res = await fetch("/api/pitch-next-question", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pitchData, history, currentQuestion: questionNum, followUpsThisQuestion: followUps }) });
       const json = await res.json();
-      if (!json.ok) {
-        track("error_encountered", { stage: "conversation", error: json.error || "unknown" });
-        setPhase("idle");
-        return;
+      if (!aliveRef.current) return;
+      if (!res.ok || !json.ok) throw new Error(json.error || "The next question could not load. Please retry.");
+      const cleanedText = (json.text || "").replace(/[—–―−‒]/g, ", ").replace(/\s+-\s+/g, ", ")
+        .replace(/,\s*,/g, ",").replace(/\s+/g, " ").trim();
+      if (json.finished) { await completeConversation(history); return; }
+      if (!cleanedText || !Number.isInteger(json.questionNumber) || json.questionNumber < 1 || json.questionNumber > 7) {
+        throw new Error("The next question could not load. Please retry.");
       }
-
-      const cleanedText = (json.text || "")
-        .replace(/[—–―−‒]/g, ", ")
-        .replace(/\s+-\s+/g, ", ")
-        .replace(/,\s*,/g, ",")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      if (json.finished) {
-        track("conversation_completed");
-        setFinished(true);
-const fallback = "Right, that's everything I need. Thanks for taking the time. Putting your feedback together now, it'll be on your screen in a moment.";        const finalText = cleanedText || fallback;
-        const aiMsg: PitchMessage = { role: "ai", text: finalText, questionNumber: json.questionNumber };
-        const finalHistory = [...history, aiMsg];
-        setMessages(finalHistory);
-        setPhase("ai_speaking");
-        speak(finalText, function () {
-          sessionStorage.setItem("pitchperfect_conversation", JSON.stringify(finalHistory));
-          sessionStorage.setItem("pitchperfect_finished_at", new Date().toISOString());
-          router.push("/pitch/results");
-        });
-        return;
-      }
-
       const aiMsg: PitchMessage = { role: "ai", text: cleanedText, questionNumber: json.questionNumber };
-      setMessages(function (prev) { return [...prev, aiMsg]; });
-      setCurrentQuestion(json.questionNumber!);
-      setFollowUpsThisQuestion(json.followUpsThisQuestion!);
+      const nextHistory = [...history, aiMsg];
+      setMessages(nextHistory); setCurrentQuestion(json.questionNumber); setFollowUpsThisQuestion(json.followUpsThisQuestion || 0);
+      await ensureSaved(checkpoint({ messages: nextHistory, currentQuestion: json.questionNumber,
+        followUpsThisQuestion: json.followUpsThisQuestion || 0, pendingQuestion: false }));
       setPhase("ai_speaking");
-      speak(cleanedText, function () {
-        setPhase("idle");
-      });
-    } catch (e) {
-      track("error_encountered", { stage: "conversation", error: "network" });
-      setPhase("idle");
+      Promise.resolve(speak(cleanedText, () => setPhase("idle"))).catch(() => setPhase("idle"));
+    } catch (error) {
+      safeTrack("error_encountered", { stage: "conversation", error: "turn_failed" });
+      setTurnError((error as Error).message || "Your answer is saved. Please continue your pitch."); setPhase("idle");
     }
   }
-
   async function handleStartListening() {
     if (speaking) stopSpeaking();
+    recordingBaseRef.current = draftAnswer;
     setPhase("starting");
     if (await start(pitchData?.companyName)) setPhase("listening");
   }
-
-  function handleStopListening() {
-    setPhase("finalising");
-    stop();
-  }
-
-  async function handleResumeListening() {
-    setPhase("starting");
-    if (await start(pitchData?.companyName)) setPhase("listening");
-  }
-
-  function handleClearAndRetry() {
-    hardReset();
-    setDraftAnswer("");
-    setPhase("idle");
-  }
+  function handleStopListening() { setPhase("finalising"); stop(); }
+  async function handleResumeListening() { await handleStartListening(); }
+  function handleClearAndRetry() { hardReset(); setDraftAnswer(""); saveDraft(""); setPhase("idle"); }
 
   async function handleSendAnswer() {
-    if (!draftAnswer.trim()) return;
+    if (!draftAnswer.trim() || busyRef.current || sessionRef.current?.state.pendingQuestion || sessionRef.current?.state.finished) return;
+    if (recipientEmail.trim() && !validPitchEmail(recipientEmail.trim())) {
+      setTurnError("Enter a valid email address, or leave the optional email box blank."); return;
+    }
+    busyRef.current = true; setTurnError("");
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     hardReset();
     const userMsg: PitchMessage = { role: "user", text: draftAnswer.trim(), questionNumber: currentQuestion };
     const newHistory = [...messages, userMsg];
-    setMessages(newHistory);
-    setDraftAnswer("");
-    await fetchNextQuestion(newHistory, currentQuestion, followUpsThisQuestion);
+    setMessages(newHistory); setDraftAnswer("");
+    try {
+      if (currentQuestion === 7 && messages.some(m => m.role === "ai" && m.questionNumber === 7)) {
+        await completeConversation(newHistory);
+      } else {
+        await ensureSaved(checkpoint({ messages: newHistory, draftAnswer: "", pendingQuestion: true }));
+        await fetchNextQuestion(newHistory, currentQuestion, followUpsThisQuestion);
+      }
+    } catch (error) { setTurnError((error as Error).message); setPhase("idle"); }
+    finally { busyRef.current = false; }
+  }
+  async function continueSavedPitch() {
+    if (!sessionRef.current || busyRef.current) return;
+    busyRef.current = true; setTurnError("");
+    try {
+      await ensureSaved();
+      const state = sessionRef.current.state;
+      setHasStarted(state.hasStarted); setIntroPlaying(false);
+      if (state.finished) { router.push("/pitch/results"); return; }
+      if (state.pendingQuestion) await fetchNextQuestion(state.messages, state.currentQuestion, state.followUpsThisQuestion);
+      else setPhase(state.draftAnswer ? "reviewing" : "idle");
+    } catch (error) { setTurnError((error as Error).message); }
+    finally { busyRef.current = false; }
   }
 
   if (!pitchData) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <div className="text-slate-500">Loading...</div>
+        <div className="text-center"><p className="text-slate-500">{turnError || "Loading your saved pitch..."}</p><a href="/pitch" className="mt-4 inline-block text-purple-700 underline">Open Pitch Perfect</a></div>
       </main>
     );
   }
@@ -221,6 +268,23 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
           ) : null}
         </div>
 
+        {saveStatus ? <p role="status" className="text-center text-xs text-slate-500 mb-4">{saveStatus}</p> : null}
+        {turnError ? <div role="alert" className="rounded-xl bg-amber-50 border border-amber-200 p-4 mb-6 text-amber-900">
+          <p>{turnError}</p><p className="mt-1 text-sm">Your saved answers have been kept.</p>
+          <button onClick={continueSavedPitch} className="mt-3 font-semibold underline">Continue saved pitch</button>
+        </div> : null}
+        {finished ? <div className="text-center mb-6"><p>Your closing answer is saved. Preparing your feedback.</p>
+          <button onClick={continueSavedPitch} className="mt-3 font-semibold text-purple-700 underline">Continue to my results</button></div> : null}
+        {!finished && (!hasStarted || currentQuestion === 7) ? <div className="max-w-xl mx-auto mb-6 rounded-2xl border border-purple-200 bg-white p-5">
+          <label htmlFor="pitch-email-copy" className="block font-semibold text-slate-900 mb-2">Email your PDF results (optional)</label>
+          <input id="pitch-email-copy" type="email" autoComplete="email" maxLength={254} value={recipientEmail}
+            onChange={event => {
+              const email = event.target.value; setRecipientEmail(email); setTurnError(""); checkpoint({ recipientEmail: email });
+              if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+              draftTimerRef.current = setTimeout(() => { ensureSaved().catch(() => {}); }, 800);
+            }} placeholder="Your email address" className="w-full rounded-xl border border-slate-300 px-4 py-3" />
+          <p className="text-xs text-slate-500 mt-2">Enter your email for a PDF copy when it is ready, or leave it blank to view and download on screen.</p>
+        </div> : null}
         {!hasStarted ? (
           <div className="text-center max-w-xl mx-auto">
             <div className="mb-12">
@@ -320,7 +384,7 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
                 <textarea
                   value={displayedAnswer}
                   readOnly={phase === "listening" || phase === "finalising"}
-                  onChange={function (e) { setDraftAnswer(e.target.value); }}
+                  onChange={function (e) { setDraftAnswer(e.target.value); saveDraft(e.target.value); }}
                   placeholder={phase === "listening" ? "Speak now. Your words will appear here as you talk." : "Type your answer here, or use Add more to dictate."}
                   className="w-full p-3 text-base text-slate-900 leading-relaxed border border-slate-200 rounded-lg focus:border-purple-400 focus:outline-none resize-none min-h-[120px] bg-white"
                   rows={5}
@@ -380,7 +444,7 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
                   </>
                 ) : null}
 
-                {phase === "idle" && !finished && !draftAnswer ? (
+                {phase === "idle" && !finished && !turnError && !draftAnswer ? (
                   <>
                   {voiceSupported ? <button
                     onClick={handleStartListening}
@@ -392,7 +456,7 @@ const fallback = "Right, that's everything I need. Thanks for taking the time. P
                   </>
                 ) : null}
 
-                {phase === "idle" && !finished && draftAnswer ? (
+                {phase === "idle" && !finished && !turnError && draftAnswer ? (
                   <>
                     {voiceSupported ? <button
                       onClick={handleResumeListening}

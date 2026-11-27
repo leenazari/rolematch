@@ -1,9 +1,12 @@
 "use client";
 
+import { pitchStore } from "@/lib/pitch-browser-store";
+import { recoverPitchSession, savedPitchSession, persistPitchSession } from "@/lib/pitch-session-client";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { loadPitchReport, reportAccess, type ReportAccess } from "@/lib/pitch-report-client";
 import { ReportInsights } from "./report-insights";
+import { ReportEmail } from "./report-email";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 function formatTimestamp(iso: string): string {
@@ -148,6 +151,7 @@ export default function PitchResultsPage() {
   const [pitchData, setPitchData] = useState<PitchData | null>(null);
   const [critique, setCritique] = useState<PitchCritique | null>(null);
   const [partialCritique, setPartialCritique] = useState<Partial<PitchCritique> | null>(null);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [error, setError] = useState("");
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -157,36 +161,41 @@ export default function PitchResultsPage() {
   const [insightsError, setInsightsError] = useState("");
   const [generatedAt, setGeneratedAt] = useState<string>("");
 
-  useEffect(function () {
-    const dataStr = sessionStorage.getItem("pitchperfect_data");
-    const convStr = sessionStorage.getItem("pitchperfect_conversation");
-    if (!dataStr || !convStr) {
-      router.push("/pitch");
-      return;
-    }
-    try {
-      const pd = JSON.parse(dataStr);
-      const conv = JSON.parse(convStr);
-      setPitchData(pd);
-      reportAccess();
-
-      const cached = sessionStorage.getItem("pitchperfect_critique");
-      const cachedTime = sessionStorage.getItem("pitchperfect_generated_at");
-      if (cached) {
-        setCritique(JSON.parse(cached));
-        if (cachedTime) setGeneratedAt(cachedTime);
-        if (sessionStorage.getItem("pitchperfect_pdf_saved") !== "true") {
-          generateCritique(pd, conv, false, JSON.parse(cached), cachedTime || undefined);
+  useEffect(() => {
+    let active = true;
+    async function restoreResults() {
+      try {
+        let dataStr = pitchStore.getItem("pitchperfect_data");
+        let convStr = pitchStore.getItem("pitchperfect_conversation");
+        if (!dataStr || !convStr || savedPitchSession()) {
+          const recovered = await recoverPitchSession();
+          if (!active) return;
+          if (recovered) {
+            if (!recovered.state.finished) { router.push("/pitch/conversation"); return; }
+            await persistPitchSession(recovered);
+            dataStr = JSON.stringify(recovered.state.pitchData); convStr = JSON.stringify(recovered.state.messages);
+          }
         }
-        return () => requestRef.current?.abort();
+        if (!active) return;
+        if (!dataStr || !convStr) throw new Error("Your report could not be loaded. Retry to reconnect your saved pitch; you do not need to start a new one.");
+        const pd = JSON.parse(dataStr), conv = JSON.parse(convStr);
+        if (!pd?.companyName || !Array.isArray(conv) || !conv.length) throw new Error("Your saved pitch could not be opened. Please retry.");
+        setPitchData(pd); reportAccess();
+        let cached = null;
+        try { cached = JSON.parse(pitchStore.getItem("pitchperfect_critique") || "null"); } catch { pitchStore.removeItem("pitchperfect_critique"); }
+        const cachedTime = pitchStore.getItem("pitchperfect_generated_at");
+        if (cached && typeof cached.verdict === "string" && Array.isArray(cached.strong) && Array.isArray(cached.weak)) {
+          setCritique(cached);
+          if (cachedTime) setGeneratedAt(cachedTime);
+          if (pitchStore.getItem("pitchperfect_pdf_saved") !== "true") generateCritique(pd, conv, false, cached, cachedTime || undefined);
+        } else generateCritique(pd, conv);
+      } catch (failure) {
+        if (active) setError(failure instanceof Error ? failure.message : "Your saved pitch could not be loaded. Please retry.");
       }
-
-      generateCritique(pd, conv);
-    } catch (e) {
-      router.push("/pitch");
     }
-    return () => requestRef.current?.abort();
-  }, [router]);
+    restoreResults();
+    return () => { active = false; requestRef.current?.abort(); };
+  }, [router, loadVersion]);
 
   async function generateCritique(pd: PitchData, conv: PitchMessage[], retry = false, existingCritique?: PitchCritique, cachedTime?: string, upgradeAccess?: ReportAccess) {
     requestRef.current?.abort();
@@ -198,14 +207,14 @@ export default function PitchResultsPage() {
       const result = await loadPitchReport(pd, conv, { signal: controller.signal, retry, existingCritique, generatedAt: cachedTime, access: upgradeAccess,
         onProgress: partial => { if (!controller.signal.aborted) setPartialCritique(partial); } });
       if (controller.signal.aborted) return;
-      if (upgradeAccess) sessionStorage.setItem("pitchperfect_report_access", JSON.stringify(upgradeAccess));
+      if (upgradeAccess) pitchStore.setItem("pitchperfect_report_access", JSON.stringify(upgradeAccess));
       setCritique(result.data);
       setPartialCritique(null);
       setGeneratedAt(result.generatedAt);
       setSaveWarning(result.saveWarning || "");
-      sessionStorage.setItem("pitchperfect_critique", JSON.stringify(result.data));
-      sessionStorage.setItem("pitchperfect_generated_at", result.generatedAt);
-      sessionStorage.setItem("pitchperfect_pdf_saved", String(result.pdfSaved));
+      pitchStore.setItem("pitchperfect_critique", JSON.stringify(result.data));
+      pitchStore.setItem("pitchperfect_generated_at", result.generatedAt);
+      pitchStore.setItem("pitchperfect_pdf_saved", String(result.pdfSaved));
     } catch (e) {
       if (controller.signal.aborted) return;
       const message = e instanceof Error ? e.message : "Something went wrong. Please try again.";
@@ -224,7 +233,7 @@ export default function PitchResultsPage() {
       const res = await fetch("/api/generate-pitch-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sessionStorage.getItem("pitchperfect_pdf_saved") === "true"
+        body: JSON.stringify(pitchStore.getItem("pitchperfect_pdf_saved") === "true"
           ? reportAccess() : { pitchData, critique, generatedAt }),
       });
       if (!res.ok) {
@@ -255,17 +264,18 @@ export default function PitchResultsPage() {
         <div className="glass-card-strong rounded-3xl p-10 max-w-md text-center">
           <h1 className="text-2xl font-bold text-slate-900 mb-4">Something went wrong</h1>
           <p className="text-slate-600 mb-6">{error}</p>
-          <p className="text-sm text-slate-500 mb-6">Your conversation is saved. You don't need to redo it.</p>
+          <p className="text-sm text-slate-500 mb-6">Saved answers are kept while you retry.</p>
           <div className="flex flex-col gap-3 items-center">
             <button
               onClick={function () {
                 setError("");
-                const dataStr = sessionStorage.getItem("pitchperfect_data");
-                const convStr = sessionStorage.getItem("pitchperfect_conversation");
+                const dataStr = pitchStore.getItem("pitchperfect_data");
+                const convStr = pitchStore.getItem("pitchperfect_conversation");
                 if (dataStr && convStr) {
-                  generateCritique(JSON.parse(dataStr), JSON.parse(convStr), true);
+                  try { generateCritique(JSON.parse(dataStr), JSON.parse(convStr), true); }
+                  catch { setLoadVersion(value => value + 1); }
                 } else {
-                  router.push("/pitch");
+                  setLoadVersion(value => value + 1);
                 }
               }}
               className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-medium smooth-transition"
@@ -321,7 +331,7 @@ export default function PitchResultsPage() {
           <p className="mt-1">The feedback shown so far and your conversation are saved.</p>
           <button disabled={savingPdf} className="mt-2 font-semibold underline disabled:opacity-50" onClick={() => {
             setError("");
-            const conversation = sessionStorage.getItem("pitchperfect_conversation");
+            const conversation = pitchStore.getItem("pitchperfect_conversation");
             if (pitchData && conversation) generateCritique(pitchData, JSON.parse(conversation), true);
           }}>Resume report</button>
         </div> : null}
@@ -330,7 +340,7 @@ export default function PitchResultsPage() {
           <div role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
             <p>{saveWarning}</p>
             <button disabled={savingPdf} className="mt-2 font-semibold underline disabled:opacity-50" onClick={() => {
-              const conversation = sessionStorage.getItem("pitchperfect_conversation");
+              const conversation = pitchStore.getItem("pitchperfect_conversation");
               if (pitchData && conversation && critique) generateCritique(pitchData, JSON.parse(conversation), false, critique, generatedAt);
             }}>{savingPdf ? "Saving PDF..." : "Retry saving PDF"}</button>
           </div>
@@ -458,11 +468,12 @@ export default function PitchResultsPage() {
         </section> : null}
 
         <ReportInsights critique={report} />
+        <ReportEmail ready={!!critique && !savingPdf && pitchStore.getItem("pitchperfect_pdf_saved") === "true"} />
         {critique && (critique.aiOpportunities === undefined || !critique.marketResearch) ? <section className="rounded-2xl bg-purple-50 border border-purple-200 p-6 mb-8">
           <h2 className="font-semibold text-slate-900 mb-2">Add practical AI advice and a market check</h2>
           <p className="text-sm text-slate-600 mb-4">Use your saved conversation to add business-specific AI pilots and current competitor research. Your existing report stays available while these prepare.</p>
           <button disabled={savingPdf || enhancingReport} className="rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
-            const conversation = sessionStorage.getItem("pitchperfect_conversation");
+            const conversation = pitchStore.getItem("pitchperfect_conversation");
             if (pitchData && conversation) generateCritique(pitchData, JSON.parse(conversation), true, undefined, undefined,
               reportAccess("pitchperfect_insights_access"));
           }}>{enhancingReport ? "Adding AI and market insights..." : "Add AI and market insights"}</button>
@@ -478,7 +489,7 @@ export default function PitchResultsPage() {
         <div className="text-center mt-12">
           <button
             onClick={function () {
-              sessionStorage.clear();
+              pitchStore.clear();
               router.push("/");
             }}
             className="text-sm text-slate-400 hover:text-slate-600 underline"

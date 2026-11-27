@@ -1,10 +1,12 @@
-import { createHash } from "node:crypto";
+import { validReportAccess, tokenHash } from "@/lib/pitch-access";
+export { validReportAccess } from "@/lib/pitch-access";
 import { waitUntil } from "@vercel/functions";
 import { beginPitchReport, consumePitchReportStream, retrievePitchReport, readPitchReportStream, parsePitchReport,
   parsePitchMarketReport, parsePitchOpening, combinePitchReportUsage, isPitchCritique } from "@/lib/pitch-report";
 import { parsePartialPitchReport } from "@/lib/pitch-report-progress";
 import { pitchStorageClient, savePitchPdf, PITCH_PDF_BUCKET } from "@/lib/pitch-storage";
 import { renderPitchPdf } from "@/lib/pitch-pdf";
+import { queuePitchReportEmails } from "@/lib/pitch-report-email";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 type Job = {
@@ -23,11 +25,6 @@ type Job = {
 type Request = { id: string; accessToken: string; pitchData?: PitchData; conversation?: PitchMessage[];
   instructions?: string; input?: string; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string; split?: boolean; twoChunks?: boolean };
 
-export function validReportAccess(id: unknown, token: unknown): boolean {
-  return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) &&
-    typeof token === "string" && /^[0-9a-f]{64}$/i.test(token);
-}
-function tokenHash(token: string) { return createHash("sha256").update(token).digest("hex"); }
 const pending = { ok: true, status: "processing" };
 
 async function findJob(id: string, accessToken: string): Promise<Job | null> {
@@ -304,6 +301,7 @@ async function completeJob(job: Job) {
       await savePitchPdf(path, pdf);
       await updateJob(job.id, { status: "ready", pdf_path: path });
     }
+    waitUntil(queuePitchReportEmails(job.id).catch(error => console.error("pitch-report email pending", { name: error?.name })));
     return { ok: true, status: "completed", data: job.critique, generatedAt: job.generated_at, pdfSaved: true, reportId: job.id };
   } catch (error) {
     console.error("pitch-report PDF saving failed", { name: (error as Error).name });

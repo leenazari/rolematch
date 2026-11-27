@@ -33,6 +33,51 @@ recording continues and the UI explains that the transcript will appear after St
 
 ## Saved reports
 
+Conversations are archived while they happen, not only on the results page.
+`pitch_sessions` holds the one-pager, conversation, reviewed and in-progress draft,
+question number, pending question state, timestamps and revision. Every accepted
+answer is saved to Supabase before requesting the next question. Debounced draft
+saves protect the closing statement before Send. Late requests cannot overwrite
+newer accepted messages or undo completion. The session ID is also its report ID.
+
+The browser mirrors the current session and its access token into session and local
+storage, with a memory fallback for storage exceptions. The landing page offers
+**Resume my pitch** or **View saved results**. Refresh restores the current question
+and draft; interrupted question requests can be continued without adding the answer
+twice. The results page reconnects to the saved session rather than resetting to
+the beginning on a storage or parsing error.
+
+The reviewed closing answer is saved immediately, without depending on the final
+voice playback. The session endpoint starts the existing report job in background
+after that durable save, even if the browser closes. Its stable ID prevents the
+results page from starting a duplicate paid generation. Completed reports, PDFs and
+conversations remain available to the platform owner in Supabase. Starting another
+pitch clears only browser pitch keys and never deletes archived sessions.
+
+Apply `pitch_sessions_and_email_outbox` alongside the earlier migrations before
+deploying the session-saving endpoints. The new tables have RLS and server-only
+access; guest requests must present the matching hashed-capability credentials.
+
+### PDF email copies
+
+The completed PDF queues one owner copy in `pitch_email_outbox`. An optional email
+box before the interview and again at the closing question saves the participant's
+request with the session, so their copy can be queued even if they leave the browser.
+Only a session with the matching report access hash can supply that address.
+Results also offer an **Email my PDF** form. Mail is sent from the stored
+PDF rather than generating another report. Unique report/recipient-role records,
+atomic delivery claims and Resend idempotency keys protect against duplicate sends.
+Delivery failures keep the PDF and request available for retry.
+
+This reuses VoiceReach's Resend configuration names: `RESEND_API_KEY` and
+`RESEND_FROM_EMAIL` (existing sender fallback `outreach@voicereach.co.uk`). Owner
+copies use `PITCH_REPORT_OWNER_EMAIL`, then `ADMIN_EMAIL`, then the existing
+VoiceReach owner fallback `lee.nazari@gmail.com`. Sending is deliberately disabled
+until the owner approves the automatic message templates and the existing Resend
+configuration is attached: set `PITCH_REPORT_EMAIL_ENABLED=true` only then. Until
+configured, requests remain `awaiting_configuration` and the UI says the request
+is saved, never that an email has been sent. Do not put API keys in the browser.
+
 Report generation runs in OpenAI background mode with a resumable stream. The page
 shows complete feedback sections while the rest of the report is still generating,
 so founders can start reading without waiting for the full document. Longer reports

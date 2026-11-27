@@ -48,6 +48,7 @@ function setup() {
     calls.save++; if (uploadFails) throw new Error("Temporary storage failure"); files.set(path, pdf);
   } };
   const lib = loadTs("src/lib/pitch-report-job.ts", {
+    "@/lib/pitch-report-email": { queuePitchReportEmails: async () => {} },
     "@vercel/functions": { waitUntil: promise => background.push(promise) },
     "@/lib/pitch-storage": storage,
     "@/lib/pitch-report": {

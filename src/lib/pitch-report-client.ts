@@ -1,8 +1,9 @@
+import { pitchStore } from "@/lib/pitch-browser-store";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 export type ReportAccess = { reportId: string; accessToken: string };
 export function reportAccess(storageKey = "pitchperfect_report_access"): ReportAccess {
-  const stored = sessionStorage.getItem(storageKey);
+  const stored = pitchStore.getItem(storageKey);
   if (stored) {
     try {
       const access = JSON.parse(stored);
@@ -12,9 +13,15 @@ export function reportAccess(storageKey = "pitchperfect_report_access"): ReportA
     } catch { /* Keep the saved conversation and replace only unusable report credentials. */ }
   }
   const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const access = { reportId: crypto.randomUUID(), accessToken: Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("") };
-  sessionStorage.setItem(storageKey, JSON.stringify(access));
-  if (storageKey === "pitchperfect_report_access") sessionStorage.setItem("pitchperfect_pdf_saved", "false");
+  const uuidBytes = crypto.getRandomValues(new Uint8Array(16));
+  uuidBytes[6] = (uuidBytes[6] & 15) | 64;
+  uuidBytes[8] = (uuidBytes[8] & 63) | 128;
+  const hex = Array.from(uuidBytes, b => b.toString(16).padStart(2, "0")).join("");
+  const access = { reportId: typeof crypto.randomUUID === "function" ? crypto.randomUUID()
+    : `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`,
+    accessToken: Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("") };
+  pitchStore.setItem(storageKey, JSON.stringify(access));
+  if (storageKey === "pitchperfect_report_access") pitchStore.setItem("pitchperfect_pdf_saved", "false");
   return access;
 }
 function pause(signal: AbortSignal) {
