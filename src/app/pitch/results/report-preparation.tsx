@@ -30,7 +30,7 @@ export function ReportLoadingScreen({ company, takingLonger }: { company?: strin
           : "Your full report usually takes less than two minutes."}</p>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">Your verdict appears first. You can start reading while we finish your recommendations and PDF.</p>
       </div>
-      {company && <p className="mt-6 border-t border-purple-100 pt-4 text-xs text-slate-600">Your answers are saved. You can refresh this page to resume.</p>}
+      {company && <p className="mt-6 border-t border-purple-100 pt-4 text-xs text-slate-600">You can refresh while your report is preparing. Once it’s ready, download your PDF before leaving.</p>}
     </section>
   </main>;
 }

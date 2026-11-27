@@ -12,18 +12,32 @@ export function reportAccess(storageKey = "pitchperfect_report_access"): ReportA
         typeof access.accessToken === "string" && /^[0-9a-f]{64}$/i.test(access.accessToken)) return access;
     } catch { /* Keep the saved conversation and replace only unusable report credentials. */ }
   }
+  const access = newReportAccess();
+  pitchStore.setItem(storageKey, JSON.stringify(access));
+  if (storageKey === "pitchperfect_report_access") pitchStore.setItem("pitchperfect_pdf_saved", "false");
+  return access;
+}
+// A results view uses a fresh credential kept only by the mounted page.
+export function newReportAccess(): ReportAccess {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const uuidBytes = crypto.getRandomValues(new Uint8Array(16));
   uuidBytes[6] = (uuidBytes[6] & 15) | 64;
   uuidBytes[8] = (uuidBytes[8] & 63) | 128;
   const hex = Array.from(uuidBytes, b => b.toString(16).padStart(2, "0")).join("");
-  const access = { reportId: typeof crypto.randomUUID === "function" ? crypto.randomUUID()
+  return { reportId: typeof crypto.randomUUID === "function" ? crypto.randomUUID()
     : `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`,
     accessToken: Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("") };
-  pitchStore.setItem(storageKey, JSON.stringify(access));
-  if (storageKey === "pitchperfect_report_access") pitchStore.setItem("pitchperfect_pdf_saved", "false");
-  return access;
 }
+
+export async function claimReportView(access: ReportAccess, view: ReportAccess) {
+  const response = await fetch("/api/pitch-report-view", { method: "POST", cache: "no-store",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...access, viewToken: view.accessToken }),
+    signal: AbortSignal.timeout(15_000) });
+  if (response.status === 410) return "closed" as const;
+  if (!response.ok) throw new Error("Your report is ready, but the download could not be opened. Please retry here.");
+  return "open" as const;
+}
+
 function pause(signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const aborted = () => { clearTimeout(timer); signal.removeEventListener("abort", aborted); reject(new DOMException("Aborted", "AbortError")); };
@@ -32,6 +46,8 @@ function pause(signal: AbortSignal) {
     if (signal.aborted) aborted();
   });
 }
+
+export type CompletedReport = { data: PitchCritique; generatedAt: string; pdfSaved: boolean; saveWarning?: string };
 
 export async function loadPitchReport(pitchData: PitchData, conversation: PitchMessage[], options: {
   signal: AbortSignal; retry?: boolean; existingCritique?: PitchCritique; generatedAt?: string; access?: ReportAccess;
@@ -49,13 +65,14 @@ export async function loadPitchReport(pitchData: PitchData, conversation: PitchM
           existingCritique: options.existingCritique, generatedAt: options.generatedAt } : {}) }),
       });
       const result = await response.json();
+      if (response.status === 410) throw new ReportClosedError();
       if (!result.ok) throw new Error(result.error || "Could not generate your report. Please try again.");
       failures = 0;
       first = false;
-      if (result.status === "completed") return result as { data: PitchCritique; generatedAt: string; pdfSaved: boolean; saveWarning?: string };
+      if (result.status === "completed") return result as CompletedReport;
       if (result.partial && Object.keys(result.partial).length) options.onProgress?.(result.partial);
     } catch (error) {
-      if (options.signal.aborted) throw error;
+      if (options.signal.aborted || error instanceof ReportClosedError) throw error;
       if (++failures >= 3) throw error;
     }
     if (Date.now() - started > 10 * 60 * 1000) {
@@ -65,3 +82,5 @@ export async function loadPitchReport(pitchData: PitchData, conversation: PitchM
   }
   throw new DOMException("Aborted", "AbortError");
 }
+
+export class ReportClosedError extends Error {}

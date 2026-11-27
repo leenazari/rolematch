@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
+        "Cache-Control": "private, no-store",
         "Content-Disposition": "attachment; filename=\"PitchPerfect_" + safeName + ".pdf\"",
       },
     });

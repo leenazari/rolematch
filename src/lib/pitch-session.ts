@@ -2,19 +2,20 @@ import { PublicError } from "@/lib/public-error";
 import "server-only";
 import { pitchStorageClient } from "@/lib/pitch-storage";
 import { validReportAccess, tokenHash } from "@/lib/pitch-access";
-import { isPitchSession, hasClosingAnswer, type PitchSessionState } from "@/lib/pitch-session-state";
+import { isPitchSession, hasClosingAnswer, withoutFounderEmail, type PitchSessionState } from "@/lib/pitch-session-state";
 type Row = { id: string; state: PitchSessionState; revision: number; status: string };
 export async function loadPitchSession(id: string, accessToken: string): Promise<Row | null> {
   if (!validReportAccess(id, accessToken)) throw new PublicError("Invalid session access.");
   const { data, error } = await pitchStorageClient().from("pitch_sessions").select("id,state,revision,status")
     .eq("id", id).eq("access_token_hash", tokenHash(accessToken)).maybeSingle();
   if (error) throw new PublicError("Your saved pitch is temporarily unavailable. Please try again.");
-  return data;
+  return data ? { ...data, state: withoutFounderEmail(data.state) } : null;
 }
 export async function savePitchSession(id: string, accessToken: string, state: PitchSessionState, beforeCreate?: () => Promise<void>, attempt = 0): Promise<{session: Row; completedNow: boolean}> {
   if (!validReportAccess(id, accessToken) || !isPitchSession(state) || (state.finished && !hasClosingAnswer(state.messages))) {
     throw new PublicError("Invalid pitch session.");
   }
+  state = withoutFounderEmail(state);
   const fields = { state, revision: state.revision, company_name: state.pitchData.companyName,
     conversation: state.messages, current_question: state.currentQuestion,
     status: state.finished ? "completed" : "in_progress", finished_at: state.finishedAt, updated_at: new Date().toISOString() };

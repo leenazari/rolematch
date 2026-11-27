@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { track } from "@vercel/analytics";
 import { pitchStore } from "@/lib/pitch-browser-store";
 import { beginPitchSession, checkpointPitch, savedPitchSession, recoverPitchSession, persistPitchSession } from "@/lib/pitch-session-client";
-import { PITCH_SIGN_OFF, validPitchEmail, type PitchSessionState } from "@/lib/pitch-session-state";
+import { PITCH_SIGN_OFF, type PitchSessionState } from "@/lib/pitch-session-state";
 import { useInterviewRecorder } from "@/hooks/useInterviewRecorder";
 import { usePitchSpeechSynthesis } from "@/hooks/usePitchSpeechSynthesis";
 import VoiceOrb from "@/components/VoiceOrb";
@@ -26,7 +26,6 @@ export default function PitchConversationPage() {
   const [hasStarted, setHasStarted] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [draftAnswer, setDraftAnswer] = useState("");
-  const [recipientEmail, setRecipientEmail] = useState("");
   const [introPlaying, setIntroPlaying] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -70,7 +69,6 @@ export default function PitchConversationPage() {
       setPitchData(state.pitchData); setMessages(state.messages); setCurrentQuestion(state.currentQuestion);
       setFollowUpsThisQuestion(state.followUpsThisQuestion); setDraftAnswer(state.draftAnswer);
       setHasStarted(state.hasStarted); setFinished(state.finished); setIntroPlaying(false);
-      setRecipientEmail(state.recipientEmail || "");
       setPhase(state.draftAnswer ? "reviewing" : "idle");
       if (state.pendingQuestion) setTurnError("Your last answer is saved. Continue your pitch to get the next question.");
       if (state.finished && !navigatedRef.current) { navigatedRef.current = true; router.push("/pitch/results"); }
@@ -139,7 +137,6 @@ export default function PitchConversationPage() {
     if (!pitchData || busyRef.current) return;
     busyRef.current = true; setTurnError("");
     try {
-      if (recipientEmail.trim() && !validPitchEmail(recipientEmail.trim())) throw new Error("Enter a valid email address, or leave the optional email box blank.");
       await ensureSaved(checkpoint({ hasStarted: true, startedAt: sessionRef.current?.state.startedAt || new Date().toISOString(), pendingQuestion: true }));
       setHasStarted(true); setIntroPlaying(true); setPhase("ai_speaking");
       introEndedRef.current = false;
@@ -201,9 +198,6 @@ export default function PitchConversationPage() {
 
   async function handleSendAnswer() {
     if (!draftAnswer.trim() || busyRef.current || sessionRef.current?.state.pendingQuestion || sessionRef.current?.state.finished) return;
-    if (recipientEmail.trim() && !validPitchEmail(recipientEmail.trim())) {
-      setTurnError("Enter a valid email address, or leave the optional email box blank."); return;
-    }
     busyRef.current = true; setTurnError("");
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     hardReset();
@@ -275,16 +269,6 @@ export default function PitchConversationPage() {
         </div> : null}
         {finished ? <div className="text-center mb-6"><p>Your closing answer is saved. Preparing your feedback.</p>
           <button onClick={continueSavedPitch} className="mt-3 font-semibold text-purple-700 underline">Continue to my results</button></div> : null}
-        {!finished && (!hasStarted || currentQuestion === 7) ? <div className="max-w-xl mx-auto mb-6 rounded-2xl border border-purple-200 bg-white p-5">
-          <label htmlFor="pitch-email-copy" className="block font-semibold text-slate-900 mb-2">Email your PDF results (optional)</label>
-          <input id="pitch-email-copy" type="email" autoComplete="email" maxLength={254} value={recipientEmail}
-            onChange={event => {
-              const email = event.target.value; setRecipientEmail(email); setTurnError(""); checkpoint({ recipientEmail: email });
-              if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-              draftTimerRef.current = setTimeout(() => { ensureSaved().catch(() => {}); }, 800);
-            }} placeholder="Your email address" className="w-full rounded-xl border border-slate-300 px-4 py-3" />
-          <p className="text-xs text-slate-500 mt-2">Enter your email for a PDF copy when it is ready, or leave it blank to view and download on screen.</p>
-        </div> : null}
         {!hasStarted ? (
           <div className="text-center max-w-xl mx-auto">
             <div className="mb-12">
@@ -294,7 +278,7 @@ export default function PitchConversationPage() {
               Ready to pitch {pitchData.companyName}?
             </h1>
             <p className="text-slate-600 mb-2">
-              I'll ask six questions about the business, then invite you to give a 30-second closing pitch. The conversation is friendly. The honest written feedback comes after.
+              I'll ask six questions about the business, then invite you to give a 30-second closing pitch. The conversation is friendly. Afterwards, download your PDF before leaving the results page.
             </p>
             <p className="text-slate-500 text-sm mb-8">
               Your investor has an AI-generated voice. Speak naturally or type, then review your answer before sending.

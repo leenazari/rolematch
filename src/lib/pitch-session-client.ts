@@ -1,15 +1,16 @@
 import { pitchStore } from "@/lib/pitch-browser-store";
 import { reportAccess, type ReportAccess } from "@/lib/pitch-report-client";
-import { isPitchSession, hasClosingAnswer, type PitchSessionState } from "@/lib/pitch-session-state";
+import { isPitchSession, hasClosingAnswer, withoutFounderEmail, type PitchSessionState } from "@/lib/pitch-session-state";
 import type { PitchData } from "@/types";
 type Snapshot = { access: ReportAccess; state: PitchSessionState };
 let saveTail: Promise<unknown> = Promise.resolve();
 export function savedPitchSession(): Snapshot | null {
   try { const saved = JSON.parse(pitchStore.getItem("pitchperfect_session") || "null");
-    return saved?.access?.reportId && saved.access.accessToken && isPitchSession(saved.state) ? saved : null;
+    return saved?.access?.reportId && saved.access.accessToken && isPitchSession(saved.state) ? { access: saved.access, state: withoutFounderEmail(saved.state) } : null;
   } catch { return null; }
 }
 export function checkpointPitch(state: PitchSessionState, access = reportAccess()): Snapshot {
+  state = withoutFounderEmail(state);
   const snapshot = { access, state };
   pitchStore.setItem("pitchperfect_session", JSON.stringify(snapshot));
   pitchStore.setItem("pitchperfect_report_access", JSON.stringify(access));
@@ -47,7 +48,11 @@ export async function recoverPitchSession(): Promise<Snapshot | null> {
       body: JSON.stringify({ action: "load", ...access }), signal: AbortSignal.timeout(12_000) });
     const result = await response.json();
     const latest = savedPitchSession();
+    if (response.ok && result?.ok && !result.session && local?.state.finished && latest?.access.reportId === access.reportId) {
+      pitchStore.clear(); return null;
+    }
     if (latest && latest.access.reportId !== access.reportId) return latest;
+    if (!latest && !pitchStore.getItem("pitchperfect_report_access")) return null;
     if (result.ok && isPitchSession(result.session?.state) &&
       (!latest || result.session.state.revision >= latest.state.revision || result.session.state.finished)) {
       return checkpointPitch(result.session.state, access);

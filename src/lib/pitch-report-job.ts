@@ -8,7 +8,7 @@ import { beginPitchReport, consumePitchReportStream, retrievePitchReport, readPi
 import { parsePartialPitchReport } from "@/lib/pitch-report-progress";
 import { pitchStorageClient, savePitchPdf, PITCH_PDF_BUCKET } from "@/lib/pitch-storage";
 import { renderPitchPdf } from "@/lib/pitch-pdf";
-import { queuePitchReportEmails } from "@/lib/pitch-report-email";
+import { queueOwnerPitchEmail } from "@/lib/pitch-report-email";
 import type { PitchData, PitchMessage, PitchCritique } from "@/types";
 
 type Job = {
@@ -303,7 +303,7 @@ async function completeJob(job: Job) {
       await savePitchPdf(path, pdf);
       await updateJob(job.id, { status: "ready", pdf_path: path });
     }
-    waitUntil(queuePitchReportEmails(job.id).catch(error => console.error("pitch-report email pending", { name: error?.name })));
+    waitUntil(queueOwnerPitchEmail(job.id).catch(error => console.error("pitch-report email pending", { name: error?.name })));
     return { ok: true, status: "completed", data: job.critique, generatedAt: job.generated_at, pdfSaved: true, reportId: job.id };
   } catch (error) {
     console.error("pitch-report PDF saving failed", { name: (error as Error).name });
@@ -319,7 +319,7 @@ export async function runPitchReportJob(request: Request) {
   let job = await findJob(request.id, request.accessToken);
   if (!job) {
     if (!request.pitchData || !Array.isArray(request.conversation) || !request.instructions || !request.input) {
-      throw new PublicError("Report not found.");
+      throw new PublicError("Report not found.", 410);
     }
     await request.beforeGeneration?.();
     const { data, error } = await pitchStorageClient().from("pitch_reports").insert({
@@ -335,7 +335,7 @@ export async function runPitchReportJob(request: Request) {
     if (error) {
       if (error.code !== "23505") throw new PublicError("Your conversation could not be saved yet. Please try again.");
       job = await findJob(request.id, request.accessToken);
-      if (!job) throw new PublicError("Report not found.");
+      if (!job) throw new PublicError("Report not found.", 410);
     } else return data.critique ? completeJob(data) : startJob(data);
   }
   if (job.critique) return completeJob(job);
