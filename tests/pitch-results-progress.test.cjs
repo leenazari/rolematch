@@ -52,7 +52,7 @@ test("the first feedback is readable while later sections prepare, and PDF downl
   assert.doesNotMatch(s.text(), /Report in progress/);
   assert.equal(s.pdfButton().props.disabled, false);
   assert.equal(s.storage.size, 0);
-  assert.match(s.text(), /Once you leave or refresh this page/);
+  assert.match(s.text(), /Download your PDF before leaving or refreshing this page/);
   assert.equal(s.view.root.findAllByType("input").filter(n => n.props.type === "email").length, 0);
 });
 
