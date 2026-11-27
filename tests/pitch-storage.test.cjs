@@ -41,4 +41,6 @@ test("the shared PDF renderer produces a valid downloadable document", async () 
   assert.ok(pdf.length > 5000);
   assert.equal(pdf.subarray(0, 4).toString(), "%PDF");
   assert.match(pdf.subarray(-50).toString(), /%%EOF/);
+  const parsed = await require("pdf-parse/lib/pdf-parse.js")(new Uint8Array(pdf));
+  assert.match(parsed.text, /Stage at upload: early revenue/);
 });

@@ -351,7 +351,7 @@ function buildPdfDocument(pitchData: PitchData, critique: PitchCritique, generat
       createElement(Text, { style: styles.coverName }, "Prepared for " + pitchData.companyName),
       createElement(Text, { style: styles.coverMeta }, "One-liner: " + pitchData.oneLineDescription),
       createElement(Text, { style: styles.coverMeta }, "Sector: " + pitchData.sector),
-      createElement(Text, { style: styles.coverMeta }, "Stage: " + pitchData.stage),
+      createElement(Text, { style: styles.coverMeta }, "Stage at upload: " + (pitchData.stage || "not specified")),
       createElement(Text, { style: styles.coverMeta }, "Ask: " + pitchData.ask),
       createElement(Text, { style: styles.coverMeta }, "Generated: " + formattedTimestamp),
       renderFooter()
