@@ -1,20 +1,23 @@
 import "./results/report-motion.css";
 import type { Metadata } from "next";
 
+const title = "Pitch Perfect | Talk to an AI investor";
+const description = "Practise your seed-stage pitch with an AI investor and download feedback on what to improve.";
+
 export const metadata: Metadata = {
-  title: "Pitch Perfect — AI investor feedback for seed-stage founders",
-  description: "Pitch your business to an AI investor, get an honest written breakdown. Built for seed-stage UK founders who want real feedback before they raise.",
+  title,
+  description,
   openGraph: {
-    title: "Pitch Perfect — AI investor feedback for seed-stage founders",
-    description: "Have a friendly conversation about your business. Get honest written feedback that doesn't pull punches.",
+    title,
+    description,
     url: "https://voicereach.io/pitch",
     siteName: "Voice Reach",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pitch Perfect — AI investor feedback for seed-stage founders",
-    description: "Have a friendly conversation about your business. Get honest written feedback that doesn't pull punches.",
+    title,
+    description,
   },
 };
 

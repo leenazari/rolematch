@@ -60,7 +60,7 @@ export default function HomePage() {
                 Pitch Perfect
               </h2>
               <p className="text-slate-600 mb-6 leading-relaxed">
-                Pitch your business to an AI investor. Have a friendly conversation about your seed-stage company, get an honest written breakdown of what's strong, what's weak, and what to fix.
+                Practise your pitch with an AI investor and download feedback on what to improve.
               </p>
               <div className="text-purple-600 font-medium group-hover:translate-x-1 smooth-transition inline-flex items-center gap-1">
                 Pitch my business

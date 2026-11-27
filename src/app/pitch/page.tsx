@@ -106,22 +106,19 @@ export default function PitchPage() {
   }
 
   return (
-    <main className="min-h-screen mesh-bg-pitch px-6 py-16">
+    <main className="min-h-screen mesh-bg-pitch px-5 py-10 sm:px-6 sm:py-14">
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-16">
+        <div className="text-center mb-8 sm:mb-10">
           <div className="text-sm font-semibold text-purple-600 mb-4 tracking-widest uppercase">
             Pitch Perfect
           </div>
           {stage === "welcome" && (
             <>
-              <h1 className="text-5xl md:text-7xl display-headline text-slate-900 mb-6">
-                Pitch your business.<br />Get honest feedback.
+              <h1 className="text-4xl sm:text-5xl md:text-7xl display-headline text-slate-900 mb-3">
+                Talk to an <span className="whitespace-nowrap">AI investor.</span>
               </h1>
-              <p className="text-lg text-slate-600 mb-3 max-w-xl mx-auto">
-                Upload a one-pager, pitch deck or full business plan. Talk it through with an investor, then get a written breakdown of what holds up and what needs work.
-              </p>
-              <p className="text-xs text-slate-400">
-                For seed-stage founders. Download your PDF before leaving the results page. Pitch Perfect keeps a private archive.
+              <p className="text-base sm:text-lg text-slate-600 max-w-xl mx-auto">
+                Answer questions, then download a PDF showing how to improve your pitch.
               </p>
             </>
           )}
@@ -129,8 +126,8 @@ export default function PitchPage() {
 
         {stage === "welcome" && resume ? <section className="max-w-2xl mx-auto mb-8 rounded-2xl border border-purple-200 bg-purple-50 p-6">
           <h2 className="font-semibold text-slate-900">Your saved pitch for {resume.company}</h2>
-          <p className="text-sm text-slate-600 mt-2 mb-4">Pick up where you left off. Once you open your completed report, download it before leaving.</p>
-          <button className="rounded-xl bg-purple-600 px-5 py-3 text-white font-medium" onClick={() => router.push(resume.finished ? "/pitch/results" : "/pitch/conversation")}>
+          {resume.finished && <p className="text-sm text-slate-600 mt-2">Download your PDF before leaving the report.</p>}
+          <button className="mt-4 rounded-xl bg-purple-600 px-5 py-3 text-white font-medium" onClick={() => router.push(resume.finished ? "/pitch/results" : "/pitch/conversation")}>
             {resume.finished ? "Continue to my report" : "Resume my pitch"}
           </button>
         </section> : null}
@@ -161,12 +158,17 @@ export default function PitchPage() {
         )}
 
         {stage === "welcome" && (
-          <PitchUpload
-            onExtracted={(data) => {
-              setPitchData(data);
-              setStage("confirm");
-            }}
-          />
+          <>
+            <PitchUpload
+              onExtracted={(data) => {
+                setPitchData(data);
+                setStage("confirm");
+              }}
+            />
+            <p className="mx-auto mt-6 max-w-xl text-center text-xs leading-relaxed text-slate-600">
+              Download your PDF before leaving the results page. Pitch Perfect keeps a private archive.
+            </p>
+          </>
         )}
 
         {stage === "confirm" && pitchData && (
@@ -183,7 +185,7 @@ export default function PitchPage() {
           />
         )}
 
-        <div className="text-center mt-16">
+        <div className="text-center mt-8">
           <button
             onClick={() => router.push("/")}
             className="text-sm text-slate-400 hover:text-slate-600 underline smooth-transition"
